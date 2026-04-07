@@ -1,7 +1,11 @@
 
   # Stock Trading Site with Prediction Meter
 
-  This is a code bundle for Stock Trading Site with Prediction Meter. The original project is available at https://www.figma.com/design/d8bfzb4WuPsTIx5Q7eNhsj/Stock-Trading-Site-with-Prediction-Meter.
+  This is a code bundle for Stock Trading Site with Prediction Meter. 
+  
+  ### Prototype(view-only)
+  
+  [https://www.figma.com/design/d8bfzb4WuPsTIx5Q7eNhsj/Stock-Trading-Site-with-Prediction-Meter.](https://www.figma.com/make/d8bfzb4WuPsTIx5Q7eNhsj/Stock-Trading-Site-with-Prediction-Meter?fullscreen=1&t=7KJ1NVsYoJ3BugA9-1)
 
   ## Running the code
 
