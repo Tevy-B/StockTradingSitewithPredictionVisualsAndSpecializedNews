@@ -1,39 +1,96 @@
 # Stock Trading Site with Prediction Meter
 
-This project now includes:
-- A React + Vite front-end.
-- A Node/Express back-end API that serves live stock quotes/news and manages a portfolio ticker list.
+This repository now supports both:
+1. **Local development** (front-end + API server), and
+2. **Public hosting** as a single full-stack web app.
 
 ## Live data + token safety
 
-Live data is fetched server-side from Finnhub, and the API token stays on the back end.
+The Finnhub token is used **only on the server** (`FINNHUB_API_KEY`) and is never bundled into browser code.
 
-1. Copy `.env.example` to `.env`.
-2. Set `FINNHUB_API_KEY` in `.env`.
-3. Run dependencies and start the app.
+---
+
+## Local setup
+
+### 1) Configure environment
+
+Copy `.env.example` to `.env` and set your key:
+
+```bash
+cp .env.example .env
+```
+
+Then edit `.env`:
+
+```env
+FINNHUB_API_KEY=your_finnhub_api_key_here
+PORT=8787
+```
+
+### 2) Install and run
 
 ```bash
 npm i
+npm run dev:server
+```
+
+In another terminal:
+
+```bash
 npm run dev
 ```
 
-This starts:
-- Front end: `http://localhost:3000`
-- Back end: `http://localhost:8787`
+- Front-end (Vite): `http://localhost:3000`
+- API server: `http://localhost:8787`
 
-The front end talks to the back end via `/api` proxy, so your token is not exposed in browser code.
+The Vite dev server proxies `/api` to the backend.
 
-## Portfolio behavior
+---
 
-- Default portfolio tickers are loaded at startup.
-- You can add any valid stock ticker from the UI.
-- The app refreshes live quote data periodically.
+## Public deployment (website you can open from anywhere)
 
-## Prototype (view-only)
+### Option A: Render (easy)
 
-[https://www.figma.com/design/d8bfzb4WuPsTIx5Q7eNhsj/Stock-Trading-Site-with-Prediction-Meter.](https://www.figma.com/make/d8bfzb4WuPsTIx5Q7eNhsj/Stock-Trading-Site-with-Prediction-Meter?fullscreen=1&t=7KJ1NVsYoJ3BugA9-1)
+This repo includes `render.yaml` and can run as one Node web service.
 
-## Please note
+1. Push this repo to GitHub.
+2. In Render, create a **New Web Service** from the repo.
+3. Render will read `render.yaml`.
+4. Add environment variable:
+   - `FINNHUB_API_KEY=<your key>`
+5. Deploy.
 
-This repository is proprietary. All content (code, design files, images, animations, and documentation) is Copyright © 2026 Tevy-B.
-All rights reserved — no reuse, distribution, or derivative works are permitted without express written permission.
+Render gives you a public URL like:
+`https://stockpredict-live.onrender.com`
+
+### Option B: Docker (any cloud/VPS)
+
+Build and run:
+
+```bash
+docker build -t stockpredict-live .
+docker run -p 8787:8787 -e FINNHUB_API_KEY=your_key stockpredict-live
+```
+
+Then open `http://<your-server-ip>:8787`.
+
+---
+
+## Production run (without Docker)
+
+```bash
+npm i
+npm run build
+FINNHUB_API_KEY=your_key npm run start
+```
+
+This serves both the built front-end and API from one Node process.
+
+---
+
+## Notes
+
+- Default portfolio tickers load at startup.
+- You can add any valid ticker symbol from the UI.
+- Recent company news is fetched live.
+- Financial/analyst deep-detail tab data still uses the project’s local fallback dataset where live equivalents are not yet wired.

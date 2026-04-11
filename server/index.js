@@ -1,7 +1,16 @@
 import { createServer } from 'node:http';
+import { stat, readFile } from 'node:fs/promises';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const port = Number(process.env.PORT || 8787);
+const host = process.env.HOST || '0.0.0.0';
 const finnhubToken = process.env.FINNHUB_API_KEY;
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const repoRoot = path.resolve(__dirname, '..');
+const frontendBuildDir = path.resolve(repoRoot, 'build');
 
 const defaultPortfolio = ['AAPL', 'MSFT', 'NVDA', 'GOOGL', 'AMZN', 'TSLA'];
 const portfolioSymbols = new Set(defaultPortfolio);
@@ -44,10 +53,10 @@ const readBody = (req) => new Promise((resolve, reject) => {
   req.on('error', reject);
 });
 
-const finnhubFetch = async (path, params = {}) => {
+const finnhubFetch = async (apiPath, params = {}) => {
   if (!finnhubToken) throw new Error('Server is missing FINNHUB_API_KEY.');
   const query = new URLSearchParams({ ...params, token: finnhubToken });
-  const response = await fetch(`https://finnhub.io/api/v1/${path}?${query.toString()}`);
+  const response = await fetch(`https://finnhub.io/api/v1/${apiPath}?${query.toString()}`);
   if (!response.ok) throw new Error(`Finnhub request failed: ${response.status}`);
   const data = await response.json();
   if (data?.error) throw new Error(data.error);
@@ -84,6 +93,40 @@ const buildStock = async (symbol) => {
   };
 };
 
+const contentTypeByExtension = {
+  '.html': 'text/html; charset=utf-8',
+  '.js': 'text/javascript; charset=utf-8',
+  '.css': 'text/css; charset=utf-8',
+  '.json': 'application/json; charset=utf-8',
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.svg': 'image/svg+xml',
+  '.ico': 'image/x-icon',
+};
+
+const serveStatic = async (req, res, requestUrl) => {
+  const requestedPath = requestUrl.pathname === '/' ? '/index.html' : requestUrl.pathname;
+  const normalizedPath = path.normalize(requestedPath).replace(/^(?:\.\.[/\\])+/, '');
+  let filePath = path.join(frontendBuildDir, normalizedPath);
+
+  try {
+    await stat(filePath);
+  } catch {
+    filePath = path.join(frontendBuildDir, 'index.html');
+  }
+
+  try {
+    const data = await readFile(filePath);
+    const ext = path.extname(filePath).toLowerCase();
+    res.writeHead(200, { 'Content-Type': contentTypeByExtension[ext] || 'application/octet-stream' });
+    res.end(data);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
 createServer(async (req, res) => {
   if (!req.url) return json(res, 404, { error: 'Not found' });
   if (req.method === 'OPTIONS') return json(res, 200, {});
@@ -92,7 +135,11 @@ createServer(async (req, res) => {
 
   try {
     if (req.method === 'GET' && requestUrl.pathname === '/api/health') {
-      return json(res, 200, { ok: true, usingLiveData: Boolean(finnhubToken) });
+      return json(res, 200, {
+        ok: true,
+        usingLiveData: Boolean(finnhubToken),
+        staticBundlePresent: await stat(frontendBuildDir).then(() => true).catch(() => false),
+      });
     }
 
     if (req.method === 'GET' && requestUrl.pathname === '/api/portfolio') {
@@ -145,10 +192,13 @@ createServer(async (req, res) => {
       return json(res, 200, { news });
     }
 
+    const served = await serveStatic(req, res, requestUrl);
+    if (served) return;
+
     return json(res, 404, { error: 'Not found' });
   } catch (error) {
     return json(res, 500, { error: error.message || 'Server error' });
   }
-}).listen(port, () => {
-  console.log(`API server listening on http://localhost:${port}`);
+}).listen(port, host, () => {
+  console.log(`Server listening on http://${host}:${port}`);
 });
