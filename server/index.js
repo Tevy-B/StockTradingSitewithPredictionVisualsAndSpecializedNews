@@ -15,6 +15,13 @@ const frontendBuildDir = path.resolve(repoRoot, 'build');
 const defaultPortfolio = ['AAPL', 'MSFT', 'NVDA', 'GOOGL', 'AMZN', 'TSLA'];
 const portfolioSymbols = new Set(defaultPortfolio);
 
+const finnhubCache = new Map();
+
+const createCacheKey = (apiPath, params = {}) => {
+  const sorted = Object.entries(params).sort(([a], [b]) => a.localeCompare(b));
+  return `${apiPath}?${new URLSearchParams(sorted).toString()}`;
+};
+
 const safeNumber = (value, fallback = 0) => {
   const numeric = Number(value);
   return Number.isFinite(numeric) ? numeric : fallback;
@@ -67,22 +74,51 @@ const readBody = (req) => new Promise((resolve, reject) => {
   req.on('error', reject);
 });
 
-const finnhubFetch = async (apiPath, params = {}) => {
+const finnhubFetch = async (apiPath, params = {}, options = {}) => {
+  const { ttlMs = 15_000, allowStaleOnError = true } = options;
   if (!finnhubToken) throw new Error('Server is missing FINNHUB_API_KEY.');
+
+  const cacheKey = createCacheKey(apiPath, params);
+  const now = Date.now();
+  const cached = finnhubCache.get(cacheKey);
+
+  if (cached && cached.expiresAt > now) {
+    return cached.data;
+  }
+
   const query = new URLSearchParams({ ...params, token: finnhubToken });
-  const response = await fetch(`https://finnhub.io/api/v1/${apiPath}?${query.toString()}`);
-  if (!response.ok) throw new Error(`Finnhub request failed: ${response.status}`);
-  const data = await response.json();
-  if (data?.error) throw new Error(data.error);
-  return data;
+
+  try {
+    const response = await fetch(`https://finnhub.io/api/v1/${apiPath}?${query.toString()}`);
+
+    if (response.status === 429) {
+      if (allowStaleOnError && cached?.data) return cached.data;
+      throw new Error('Finnhub rate limit reached (429). Please retry in a minute.');
+    }
+
+    if (!response.ok) throw new Error(`Finnhub request failed: ${response.status}`);
+
+    const data = await response.json();
+    if (data?.error) throw new Error(data.error);
+
+    finnhubCache.set(cacheKey, {
+      data,
+      expiresAt: now + ttlMs,
+    });
+
+    return data;
+  } catch (error) {
+    if (allowStaleOnError && cached?.data) return cached.data;
+    throw error;
+  }
 };
 
 const buildStock = async (symbol) => {
   const upperSymbol = symbol.toUpperCase();
   const [quote, profile, metricResponse] = await Promise.all([
-    finnhubFetch('quote', { symbol: upperSymbol }),
-    finnhubFetch('stock/profile2', { symbol: upperSymbol }),
-    finnhubFetch('stock/metric', { symbol: upperSymbol, metric: 'all' }),
+    finnhubFetch('quote', { symbol: upperSymbol }, { ttlMs: 15_000 }),
+    finnhubFetch('stock/profile2', { symbol: upperSymbol }, { ttlMs: 1000 * 60 * 60 * 12 }),
+    finnhubFetch('stock/metric', { symbol: upperSymbol, metric: 'all' }, { ttlMs: 1000 * 60 * 60 * 6 }),
   ]);
 
   const currentPrice = safeNumber(quote.c);
@@ -163,10 +199,10 @@ const consensusFromRecommendation = (rec) => {
 
 const buildStockDetail = async (symbol, stockSnapshot) => {
   const [metricResponse, financials, recommendations, priceTarget] = await Promise.all([
-    finnhubFetch('stock/metric', { symbol, metric: 'all' }),
-    finnhubFetch('stock/financials-reported', { symbol }),
-    finnhubFetch('stock/recommendation', { symbol }),
-    finnhubFetch('stock/price-target', { symbol }),
+    finnhubFetch('stock/metric', { symbol, metric: 'all' }, { ttlMs: 1000 * 60 * 60 * 6 }),
+    finnhubFetch('stock/financials-reported', { symbol }, { ttlMs: 1000 * 60 * 60 * 12 }),
+    finnhubFetch('stock/recommendation', { symbol }, { ttlMs: 1000 * 60 * 60 * 6 }),
+    finnhubFetch('stock/price-target', { symbol }, { ttlMs: 1000 * 60 * 60 * 6 }),
   ]);
 
   const reports = Array.isArray(financials?.data) ? financials.data : [];
@@ -261,7 +297,13 @@ createServer(async (req, res) => {
       if (!/^[A-Z.]{1,10}$/.test(symbol)) {
         return json(res, 400, { error: 'Ticker must contain only letters/dot and be 1-10 characters.' });
       }
-      await finnhubFetch('quote', { symbol });
+      try {
+        await finnhubFetch('quote', { symbol }, { ttlMs: 15_000, allowStaleOnError: false });
+      } catch (error) {
+        if (!String(error?.message || '').includes('429')) {
+          throw error;
+        }
+      }
       portfolioSymbols.add(symbol);
       return json(res, 201, { symbols: Array.from(portfolioSymbols) });
     }
@@ -276,7 +318,7 @@ createServer(async (req, res) => {
     if (req.method === 'GET' && requestUrl.pathname === '/api/stocks/search') {
       const q = String(requestUrl.searchParams.get('q') || '').trim();
       if (!q) return json(res, 200, { results: [] });
-      const data = await finnhubFetch('search', { q });
+      const data = await finnhubFetch('search', { q }, { ttlMs: 1000 * 60 * 10 });
 
       const baseResults = (data?.result || [])
         .filter((item) => item.symbol)
@@ -288,17 +330,7 @@ createServer(async (req, res) => {
           type: item.type || '',
         }));
 
-      const enhanced = await Promise.all(baseResults.map(async (item) => {
-        if (item.exchange !== 'Unknown exchange') return item;
-        try {
-          const profile = await finnhubFetch('stock/profile2', { symbol: item.symbol });
-          return { ...item, exchange: normalizeExchange(profile?.exchange || profile?.finnhubIndustry || '') };
-        } catch {
-          return item;
-        }
-      }));
-
-      return json(res, 200, { results: enhanced });
+      return json(res, 200, { results: baseResults });
     }
 
     const detailMatch = requestUrl.pathname.match(/^\/api\/stocks\/([^/]+)\/detail$/);
@@ -314,7 +346,7 @@ createServer(async (req, res) => {
       const symbol = decodeURIComponent(newsMatch[1]).toUpperCase();
       const fromDate = new Date(Date.now() - 604800000).toISOString().slice(0, 10);
       const toDate = new Date().toISOString().slice(0, 10);
-      const data = await finnhubFetch('company-news', { symbol, from: fromDate, to: toDate });
+      const data = await finnhubFetch('company-news', { symbol, from: fromDate, to: toDate }, { ttlMs: 1000 * 60 * 30 });
       const news = (data || []).slice(0, 10).map((item) => ({
         id: item.id,
         headline: item.headline,

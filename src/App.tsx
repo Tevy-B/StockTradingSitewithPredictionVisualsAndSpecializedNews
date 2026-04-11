@@ -68,7 +68,7 @@ export default function App() {
 
     const interval = setInterval(() => {
       refreshStocks(portfolioSymbols).catch(() => null);
-    }, 30000);
+    }, 60000);
 
     return () => clearInterval(interval);
   }, [portfolioSymbols]);

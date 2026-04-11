@@ -128,3 +128,5 @@ After deployment finishes, Render gives you a live URL in the service page (for 
 - You can now type a company name (e.g. **Eli Lilly**) and receive Finnhub-powered ticker suggestions with exchange metadata (such as NYSE/NASDAQ when available).
 - Clicking a suggestion adds the selected ticker to your portfolio and loads live quote/news data.
 - The UI now includes source transparency links (Finnhub docs, Yahoo Finance, Google Finance) so users can independently verify symbol behavior.
+
+- Finnhub free plans have rate limits. The backend uses short-term caching and stale-on-rate-limit fallback to reduce 429 failures during normal browsing.
