@@ -1,43 +1,101 @@
-import React, { useState, useEffect } from 'react';
-import { Search, DollarSign, Activity, Info } from 'lucide-react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Search, DollarSign, Activity, Info, Plus } from 'lucide-react';
 import { StockCard } from './components/StockCard';
 import { StockDetail } from './components/StockDetail';
 import { MarketSummary } from './components/MarketSummary';
 import { Input } from './components/ui/input';
 import { Badge } from './components/ui/badge';
+import { Button } from './components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from './components/ui/tooltip';
-import { mockStocks, initialMarketSummary } from './constants/mockData';
-import { simulateStockUpdate, filterStocks, Stock } from './utils/stockUtils';
+import { filterStocks, Stock } from './utils/stockUtils';
+import { addTickerToPortfolio, getPortfolio, getStocks } from './services/api';
 
 export default function App() {
-  const [stocks, setStocks] = useState<Stock[]>(mockStocks);
+  const [stocks, setStocks] = useState<Stock[]>([]);
+  const [portfolioSymbols, setPortfolioSymbols] = useState<string[]>([]);
   const [selectedStock, setSelectedStock] = useState<Stock | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
-  const [marketSummary, setMarketSummary] = useState(initialMarketSummary);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState('');
 
-  // Simulate real-time stock updates
+  const marketSummary = useMemo(() => {
+    const totalValue = stocks.reduce((sum, stock) => sum + stock.price, 0);
+    const dailyChange = stocks.reduce((sum, stock) => sum + stock.change, 0);
+    const dailyChangePercent = totalValue ? (dailyChange / Math.max(totalValue - dailyChange, 1)) * 100 : 0;
+
+    return { totalValue, dailyChange, dailyChangePercent };
+  }, [stocks]);
+
+  const refreshStocks = async (symbols: string[]) => {
+    if (!symbols.length) {
+      setStocks([]);
+      return;
+    }
+
+    const liveStocks = await getStocks(symbols);
+    setStocks(liveStocks);
+  };
+
   useEffect(() => {
+    let mounted = true;
+
+    const load = async () => {
+      try {
+        setError('');
+        const symbols = await getPortfolio();
+        if (!mounted) return;
+
+        setPortfolioSymbols(symbols);
+        await refreshStocks(symbols);
+      } catch (loadError) {
+        if (!mounted) return;
+        setError(loadError instanceof Error ? loadError.message : 'Failed to load live data.');
+      } finally {
+        if (mounted) setIsLoading(false);
+      }
+    };
+
+    load();
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!portfolioSymbols.length) return;
+
     const interval = setInterval(() => {
-      setStocks(prevStocks => prevStocks.map(simulateStockUpdate));
-    }, 3000);
+      refreshStocks(portfolioSymbols).catch(() => null);
+    }, 30000);
 
     return () => clearInterval(interval);
-  }, []);
+  }, [portfolioSymbols]);
+
+  const handleAddTicker = async () => {
+    const symbol = searchTerm.trim().toUpperCase();
+    if (!symbol) return;
+
+    try {
+      setError('');
+      const symbols = await addTickerToPortfolio(symbol);
+      setPortfolioSymbols(symbols);
+      await refreshStocks(symbols);
+      setSearchTerm('');
+    } catch (addError) {
+      setError(addError instanceof Error ? addError.message : 'Unable to add ticker.');
+    }
+  };
 
   const filteredStocks = filterStocks(stocks, searchTerm);
 
   if (selectedStock) {
-    return (
-      <StockDetail 
-        stock={selectedStock} 
-        onBack={() => setSelectedStock(null)}
-      />
-    );
+    const latest = stocks.find((stock) => stock.symbol === selectedStock.symbol) || selectedStock;
+    return <StockDetail stock={latest} onBack={() => setSelectedStock(null)} />;
   }
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Header */}
       <header className="border-b border-border bg-card">
         <div className="container mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
@@ -45,91 +103,58 @@ export default function App() {
               <DollarSign className="h-8 w-8 text-primary" />
               <h1 className="text-2xl font-bold">StockPredict</h1>
             </div>
-            <div className="flex items-center gap-3">
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Badge variant="secondary" className="gap-1 cursor-help">
-                    <Activity className="h-4 w-4 animate-pulse text-green-500" />
-                    Live Market
-                  </Badge>
-                </TooltipTrigger>
-                <TooltipContent side="bottom" className="text-xs max-w-xs">
-                  Prices and prediction scores update every 3 seconds with simulated market data.
-                  Click any stock card to view full details, balance sheet, and analyst ratings.
-                </TooltipContent>
-              </Tooltip>
-            </div>
+            <Badge variant="secondary" className="gap-1 cursor-help">
+              <Activity className="h-4 w-4 animate-pulse text-green-500" />
+              Live Market
+            </Badge>
           </div>
         </div>
       </header>
 
       <div className="container mx-auto px-4 py-6">
-        {/* Market Summary */}
         <MarketSummary stocks={stocks} marketSummary={marketSummary} />
 
-        {/* Search */}
-        <div className="flex gap-4 mb-6">
+        <div className="flex gap-3 mb-6">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
             <Input
-              placeholder="Search stocks by symbol or name (e.g. AAPL, Tesla)..."
+              placeholder="Search or type a ticker to add (e.g. AAPL, NFLX)..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="pl-9"
             />
           </div>
+          <Button onClick={handleAddTicker} className="gap-2">
+            <Plus className="h-4 w-4" />
+            Add ticker
+          </Button>
         </div>
 
-        {/* Legend */}
+        {error && <p className="text-sm text-red-600 mb-4">{error}</p>}
+        {isLoading && <p className="text-sm text-muted-foreground mb-4">Loading live portfolio data…</p>}
+
         <div className="flex flex-wrap items-center gap-4 mb-4 text-xs text-muted-foreground">
-          <span className="flex items-center gap-1.5">
-            <span className="w-2.5 h-2.5 rounded-full bg-green-600 inline-block" />
-            Strong Buy (75–100)
-          </span>
-          <span className="flex items-center gap-1.5">
-            <span className="w-2.5 h-2.5 rounded-full bg-green-400 inline-block" />
-            Buy (60–75)
-          </span>
-          <span className="flex items-center gap-1.5">
-            <span className="w-2.5 h-2.5 rounded-full bg-yellow-400 inline-block" />
-            Hold (40–60)
-          </span>
-          <span className="flex items-center gap-1.5">
-            <span className="w-2.5 h-2.5 rounded-full bg-red-400 inline-block" />
-            Sell (25–40)
-          </span>
-          <span className="flex items-center gap-1.5">
-            <span className="w-2.5 h-2.5 rounded-full bg-red-600 inline-block" />
-            Strong Sell (0–25)
-          </span>
           <Tooltip>
             <TooltipTrigger asChild>
               <span className="flex items-center gap-1 cursor-help underline decoration-dotted">
-                <Info className="h-3 w-3" /> How scores work
+                <Info className="h-3 w-3" /> Prediction score note
               </span>
             </TooltipTrigger>
             <TooltipContent side="right" className="max-w-xs text-xs">
-              The AI Prediction Score (0–100) combines: technical signals (RSI, MACD, moving averages),
-              Wall Street analyst consensus from major banks, and fundamental strength metrics. 
-              Updated every 3 seconds. Click a card to see the full breakdown.
+              Prediction is model-derived using live price movement + valuation metrics.
             </TooltipContent>
           </Tooltip>
         </div>
 
-        {/* Stock Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {filteredStocks.map((stock) => (
-            <StockCard
-              key={stock.symbol}
-              stock={stock}
-              onClick={() => setSelectedStock(stock)}
-            />
+            <StockCard key={stock.symbol} stock={stock} onClick={() => setSelectedStock(stock)} />
           ))}
         </div>
 
-        {filteredStocks.length === 0 && (
+        {!isLoading && filteredStocks.length === 0 && (
           <div className="text-center py-12 text-muted-foreground">
-            No stocks found matching "<span className="font-medium text-foreground">{searchTerm}</span>". Try searching by symbol (e.g. AAPL) or company name.
+            No stocks found matching <span className="font-medium text-foreground">"{searchTerm}"</span>.
           </div>
         )}
       </div>

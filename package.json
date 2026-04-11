@@ -57,6 +57,8 @@
   },
   "scripts": {
     "dev": "vite",
-    "build": "vite build"
+    "dev:server": "node --watch server/index.js",
+    "build": "vite build",
+    "build:server": "node --check server/index.js"
   }
 }
