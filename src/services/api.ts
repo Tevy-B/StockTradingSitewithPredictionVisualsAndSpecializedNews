@@ -1,4 +1,4 @@
-import { Stock } from '../utils/stockUtils';
+import { Stock, StockExtendedDetail } from '../utils/stockUtils';
 
 interface PortfolioResponse {
   symbols: string[];
@@ -19,6 +19,10 @@ export interface StockNewsItem {
 
 interface StockNewsResponse {
   news: StockNewsItem[];
+}
+
+interface StockDetailResponse {
+  detail: StockExtendedDetail;
 }
 
 interface SearchResponse {
@@ -66,6 +70,11 @@ export const searchSymbols = async (query: string) => {
   if (!query.trim()) return [];
   const payload = await apiFetch<SearchResponse>(`/api/stocks/search?q=${encodeURIComponent(query)}`);
   return payload.results;
+};
+
+export const getStockDetail = async (symbol: string) => {
+  const payload = await apiFetch<StockDetailResponse>(`/api/stocks/${encodeURIComponent(symbol)}/detail`);
+  return payload.detail;
 };
 
 export const getStockNews = async (symbol: string) => {

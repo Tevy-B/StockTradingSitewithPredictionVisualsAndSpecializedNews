@@ -15,10 +15,10 @@ import { BalanceSheet } from './BalanceSheet';
 import { AnalystRatings } from './AnalystRatings';
 import {
   Stock, getPredictionLabel, getPredictionColor,
-  getAnalystConsensusColor, generateChartData, METRIC_TOOLTIPS
+  getAnalystConsensusColor, generateChartData, METRIC_TOOLTIPS, StockExtendedDetail
 } from '../utils/stockUtils';
 import { stockDetailsMap } from '../constants/mockData';
-import { getStockNews, StockNewsItem } from '../services/api';
+import { getStockDetail, getStockNews, StockNewsItem } from '../services/api';
 
 interface StockDetailProps {
   stock: Stock;
@@ -49,14 +49,16 @@ const CustomChartTooltip = ({ active, payload, label }: any) => {
 export function StockDetail({ stock, onBack }: StockDetailProps) {
   const [chartRange, setChartRange] = useState(30);
   const [news, setNews] = useState<StockNewsItem[]>([]);
+  const [liveDetail, setLiveDetail] = useState<StockExtendedDetail | null>(null);
 
   useEffect(() => {
     getStockNews(stock.symbol).then(setNews).catch(() => setNews([]));
+    getStockDetail(stock.symbol).then(setLiveDetail).catch(() => setLiveDetail(null));
   }, [stock.symbol]);
 
   const predictionLabel = getPredictionLabel(stock.prediction);
   const predictionColor = getPredictionColor(stock.prediction);
-  const detail = stockDetailsMap[stock.symbol];
+  const detail = liveDetail ?? stockDetailsMap[stock.symbol];
 
   const chartData = useMemo(() => generateChartData(stock.price, chartRange), [chartRange, stock.price]);
   const chartMin = Math.min(...chartData.map(d => d.price)) * 0.99;
@@ -80,12 +82,13 @@ export function StockDetail({ stock, onBack }: StockDetailProps) {
             <div className="flex-1">
               <div className="flex items-center gap-2 flex-wrap">
                 <h1 className="text-2xl font-bold">{stock.symbol}</h1>
+                {stock.exchange && <Badge variant="outline">{stock.exchange}</Badge>}
                 {analystConsensus && <span className={`text-xs font-semibold px-2 py-0.5 rounded border ${analystColor}`}>Analyst: {analystConsensus.consensus}</span>}
               </div>
               <p className="text-muted-foreground text-sm">{stock.name}</p>
               <div className="text-xs mt-1 flex gap-3 flex-wrap">
                 <a href={`https://finance.yahoo.com/quote/${stock.symbol}`} target="_blank" rel="noreferrer" className="underline inline-flex items-center gap-1">Yahoo Finance <ExternalLink className="h-3 w-3" /></a>
-                <a href={`https://www.google.com/finance/quote/${stock.symbol}:NYSE`} target="_blank" rel="noreferrer" className="underline inline-flex items-center gap-1">Google Finance <ExternalLink className="h-3 w-3" /></a>
+                <a href={`https://www.google.com/finance/quote/${stock.symbol}:${stock.exchange?.includes('NASDAQ') ? 'NASDAQ' : 'NYSE'}`} target="_blank" rel="noreferrer" className="underline inline-flex items-center gap-1">Google Finance <ExternalLink className="h-3 w-3" /></a>
               </div>
             </div>
             <Badge variant="secondary" className="gap-1 shrink-0">

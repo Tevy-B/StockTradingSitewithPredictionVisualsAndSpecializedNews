@@ -31,6 +31,20 @@ const calculatePrediction = ({ changePercent, pe }) => {
   return Math.max(0, Math.min(100, Math.round(55 + momentum + valuation)));
 };
 
+const normalizeExchange = (exchange) => {
+  const raw = String(exchange || '').trim();
+  if (!raw) return 'Unknown exchange';
+  const upper = raw.toUpperCase();
+
+  if (upper.includes('NASDAQ')) return 'NASDAQ';
+  if (upper.includes('NEW YORK') || upper === 'NYSE' || upper.includes('NYSE')) return 'NYSE';
+  if (upper.includes('AMEX') || upper.includes('NYSE AMERICAN')) return 'NYSE American';
+  if (upper.includes('ARCA')) return 'NYSE Arca';
+  if (upper.includes('OTC')) return 'OTC';
+
+  return raw;
+};
+
 const json = (res, status, payload) => {
   res.writeHead(status, {
     'Content-Type': 'application/json',
@@ -83,6 +97,7 @@ const buildStock = async (symbol) => {
   return {
     symbol: upperSymbol,
     name: profile?.name || upperSymbol,
+    exchange: normalizeExchange(profile?.exchange),
     price: currentPrice,
     change: rawChange,
     changePercent,
@@ -90,6 +105,100 @@ const buildStock = async (symbol) => {
     volume: compactNumber(safeNumber(quote.v, 0)),
     marketCap: compactNumber(marketCap),
     pe,
+  };
+};
+
+const findConceptValue = (items = [], concepts = []) => {
+  const conceptSet = new Set(concepts.map((item) => item.toLowerCase()));
+  const found = items.find((item) => conceptSet.has(String(item?.concept || '').toLowerCase()));
+  return safeNumber(found?.value, 0);
+};
+
+const toBillions = (value) => Number((safeNumber(value, 0) / 1_000_000_000).toFixed(2));
+
+const mapReportToEntry = (reportItem) => {
+  const report = reportItem?.report || {};
+  const bs = report.bs || [];
+  const ic = report.ic || [];
+  const cf = report.cf || [];
+
+  const year = reportItem?.year || '';
+  const quarter = reportItem?.quarter || '';
+  const period = quarter ? `Q${quarter} ${year}` : `${year}`;
+
+  return {
+    period,
+    revenue: toBillions(findConceptValue(ic, ['RevenueFromContractWithCustomerExcludingAssessedTax', 'Revenues', 'SalesRevenueNet'])),
+    netIncome: toBillions(findConceptValue(ic, ['NetIncomeLoss'])),
+    totalAssets: toBillions(findConceptValue(bs, ['Assets'])),
+    totalLiabilities: toBillions(findConceptValue(bs, ['Liabilities'])),
+    shareholdersEquity: toBillions(findConceptValue(bs, ['StockholdersEquity', 'StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest'])),
+    operatingCashFlow: toBillions(findConceptValue(cf, ['NetCashProvidedByUsedInOperatingActivities', 'NetCashProvidedByUsedInOperatingActivitiesContinuingOperations'])),
+  };
+};
+
+const consensusFromRecommendation = (rec) => {
+  const strongBuy = safeNumber(rec?.strongBuy, 0);
+  const buy = safeNumber(rec?.buy, 0);
+  const hold = safeNumber(rec?.hold, 0);
+  const sell = safeNumber(rec?.sell, 0);
+  const strongSell = safeNumber(rec?.strongSell, 0);
+
+  const bullishScore = strongBuy * 2 + buy;
+  const bearishScore = strongSell * 2 + sell;
+
+  let consensus = 'Hold';
+  if (bullishScore >= bearishScore + 8) consensus = 'Strong Buy';
+  else if (bullishScore > bearishScore + 2) consensus = 'Buy';
+  else if (bearishScore >= bullishScore + 8) consensus = 'Strong Sell';
+  else if (bearishScore > bullishScore + 2) consensus = 'Sell';
+
+  return {
+    consensus,
+    buyCount: strongBuy + buy,
+    holdCount: hold,
+    sellCount: strongSell + sell,
+  };
+};
+
+const buildStockDetail = async (symbol, stockSnapshot) => {
+  const [metricResponse, financials, recommendations, priceTarget] = await Promise.all([
+    finnhubFetch('stock/metric', { symbol, metric: 'all' }),
+    finnhubFetch('stock/financials-reported', { symbol }),
+    finnhubFetch('stock/recommendation', { symbol }),
+    finnhubFetch('stock/price-target', { symbol }),
+  ]);
+
+  const reports = Array.isArray(financials?.data) ? financials.data : [];
+  const sorted = reports.sort((a, b) => new Date(b?.endDate || 0).getTime() - new Date(a?.endDate || 0).getTime());
+  const annual = sorted.filter((item) => ['10-K', '20-F', '40-F'].includes(item?.form)).slice(0, 4).map(mapReportToEntry);
+  const quarterly = sorted.filter((item) => !['10-K', '20-F', '40-F'].includes(item?.form)).slice(0, 4).map(mapReportToEntry);
+
+  const latestRec = Array.isArray(recommendations) && recommendations.length > 0 ? recommendations[0] : {};
+  const derivedConsensus = consensusFromRecommendation(latestRec);
+
+  const averagePriceTarget = safeNumber(priceTarget?.targetMean || priceTarget?.targetMedian, stockSnapshot?.price || 0);
+
+  return {
+    beta: safeNumber(metricResponse?.metric?.beta, 1),
+    eps: safeNumber(metricResponse?.metric?.epsTTM || metricResponse?.metric?.epsNormalizedAnnual, 0),
+    dividend: safeNumber(metricResponse?.metric?.dividendPerShareAnnual, 0),
+    high52w: safeNumber(metricResponse?.metric?.['52WeekHigh'], stockSnapshot?.price || 0),
+    low52w: safeNumber(metricResponse?.metric?.['52WeekLow'], stockSnapshot?.price || 0),
+    balanceSheet: {
+      annual,
+      quarterly,
+    },
+    analystConsensus: {
+      consensus: derivedConsensus.consensus,
+      averagePriceTarget,
+      highTarget: safeNumber(priceTarget?.targetHigh, averagePriceTarget),
+      lowTarget: safeNumber(priceTarget?.targetLow, averagePriceTarget),
+      buyCount: derivedConsensus.buyCount,
+      holdCount: derivedConsensus.holdCount,
+      sellCount: derivedConsensus.sellCount,
+      ratings: [],
+    },
   };
 };
 
@@ -168,16 +277,36 @@ createServer(async (req, res) => {
       const q = String(requestUrl.searchParams.get('q') || '').trim();
       if (!q) return json(res, 200, { results: [] });
       const data = await finnhubFetch('search', { q });
-      const results = (data?.result || [])
+
+      const baseResults = (data?.result || [])
         .filter((item) => item.symbol)
         .slice(0, 12)
         .map((item) => ({
           symbol: item.symbol,
           name: item.description || item.displaySymbol || item.symbol,
-          exchange: item.primaryExchange || item.exchange || '',
+          exchange: normalizeExchange(item.primaryExchange || item.exchange || ''),
           type: item.type || '',
         }));
-      return json(res, 200, { results });
+
+      const enhanced = await Promise.all(baseResults.map(async (item) => {
+        if (item.exchange !== 'Unknown exchange') return item;
+        try {
+          const profile = await finnhubFetch('stock/profile2', { symbol: item.symbol });
+          return { ...item, exchange: normalizeExchange(profile?.exchange || profile?.finnhubIndustry || '') };
+        } catch {
+          return item;
+        }
+      }));
+
+      return json(res, 200, { results: enhanced });
+    }
+
+    const detailMatch = requestUrl.pathname.match(/^\/api\/stocks\/([^/]+)\/detail$/);
+    if (req.method === 'GET' && detailMatch) {
+      const symbol = decodeURIComponent(detailMatch[1]).toUpperCase();
+      const stockSnapshot = await buildStock(symbol);
+      const detail = await buildStockDetail(symbol, stockSnapshot);
+      return json(res, 200, { detail });
     }
 
     const newsMatch = requestUrl.pathname.match(/^\/api\/stocks\/([^/]+)\/news$/);

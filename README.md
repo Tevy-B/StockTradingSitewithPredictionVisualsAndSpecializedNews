@@ -93,7 +93,7 @@ This serves both the built front-end and API from one Node process.
 - Default portfolio tickers load at startup.
 - You can add any valid ticker symbol from the UI.
 - Recent company news is fetched live.
-- Financial/analyst deep-detail tab data still uses the project’s local fallback dataset where live equivalents are not yet wired.
+- Financial/analyst detail now attempts to use live Finnhub metric/financial/recommendation/target data and falls back to local dataset when unavailable.
 
 
 ---
