@@ -5,8 +5,21 @@ import { StockDetail } from './components/StockDetail';
 import { MarketSummary } from './components/MarketSummary';
 import { Badge } from './components/ui/badge';
 import { Tooltip, TooltipContent, TooltipTrigger } from './components/ui/tooltip';
+import { Input } from './components/ui/input';
+import { Button } from './components/ui/button';
 import { filterStocks, Stock } from './utils/stockUtils';
-import { addTickerToPortfolio, getPortfolio, getStocks, searchSymbols } from './services/api';
+import {
+  addTickerToPortfolio,
+  getMe,
+  getPortfolio,
+  getStocks,
+  login,
+  register,
+  searchSymbols,
+  setStoredToken,
+  clearStoredToken,
+  getStoredToken,
+} from './services/api';
 import { StockSearch, StockSuggestion } from './components/StockSearch';
 
 export default function App() {
@@ -18,12 +31,17 @@ export default function App() {
   const [isSuggestionsLoading, setIsSuggestionsLoading] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
+  const [lastRefreshDate, setLastRefreshDate] = useState('');
+  const [usedCacheOnly, setUsedCacheOnly] = useState(false);
+
+  const [userEmail, setUserEmail] = useState('');
+  const [loginEmail, setLoginEmail] = useState('');
+  const [loginPassword, setLoginPassword] = useState('');
 
   const marketSummary = useMemo(() => {
     const totalValue = stocks.reduce((sum, stock) => sum + stock.price, 0);
     const dailyChange = stocks.reduce((sum, stock) => sum + stock.change, 0);
     const dailyChangePercent = totalValue ? (dailyChange / Math.max(totalValue - dailyChange, 1)) * 100 : 0;
-
     return { totalValue, dailyChange, dailyChangePercent };
   }, [stocks]);
 
@@ -32,50 +50,47 @@ export default function App() {
       setStocks([]);
       return;
     }
+    const payload = await getStocks(symbols);
+    setStocks(payload.stocks);
+    setLastRefreshDate(payload.lastRefreshDate);
+    setUsedCacheOnly(payload.usedCacheOnly);
+  };
 
-    const liveStocks = await getStocks(symbols);
-    setStocks(liveStocks);
+  const bootstrap = async () => {
+    try {
+      setError('');
+      if (!getStoredToken()) {
+        setIsLoading(false);
+        return;
+      }
+      const me = await getMe();
+      setUserEmail(me.user.email);
+      const symbols = await getPortfolio();
+      setPortfolioSymbols(symbols);
+      await refreshStocks(symbols);
+    } catch {
+      clearStoredToken();
+      setUserEmail('');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   useEffect(() => {
-    let mounted = true;
-
-    const load = async () => {
-      try {
-        setError('');
-        const symbols = await getPortfolio();
-        if (!mounted) return;
-
-        setPortfolioSymbols(symbols);
-        await refreshStocks(symbols);
-      } catch (loadError) {
-        if (!mounted) return;
-        setError(loadError instanceof Error ? loadError.message : 'Failed to load live data.');
-      } finally {
-        if (mounted) setIsLoading(false);
-      }
-    };
-
-    load();
-
-    return () => {
-      mounted = false;
-    };
+    bootstrap();
   }, []);
 
   useEffect(() => {
-    if (!portfolioSymbols.length) return;
-
+    if (!portfolioSymbols.length || !userEmail) return;
     const interval = setInterval(() => {
       refreshStocks(portfolioSymbols).catch(() => null);
     }, 60000);
-
     return () => clearInterval(interval);
-  }, [portfolioSymbols]);
+  }, [portfolioSymbols, userEmail]);
 
   useEffect(() => {
     const query = searchTerm.trim();
-    if (!query) {
+    if (!query || !userEmail) {
       setSuggestions([]);
       return;
     }
@@ -93,7 +108,7 @@ export default function App() {
     }, 250);
 
     return () => clearTimeout(timeout);
-  }, [searchTerm]);
+  }, [searchTerm, userEmail]);
 
   const addTicker = async (symbolInput: string) => {
     const symbol = symbolInput.trim().toUpperCase();
@@ -113,6 +128,40 @@ export default function App() {
 
   const filteredStocks = filterStocks(stocks, searchTerm);
 
+  const handleAuth = async (mode: 'login' | 'register') => {
+    try {
+      setError('');
+      const payload = mode === 'login'
+        ? await login(loginEmail, loginPassword)
+        : await register(loginEmail, loginPassword);
+      setStoredToken(payload.token);
+      setUserEmail(payload.user.email);
+      const symbols = await getPortfolio();
+      setPortfolioSymbols(symbols);
+      await refreshStocks(symbols);
+    } catch (authError) {
+      setError(authError instanceof Error ? authError.message : 'Authentication failed.');
+    }
+  };
+
+  if (!userEmail) {
+    return (
+      <div className="min-h-screen grid place-items-center p-4">
+        <div className="w-full max-w-md border rounded-lg p-6 bg-card space-y-3">
+          <h1 className="text-xl font-semibold">Sign in to StockPredict</h1>
+          <Input placeholder="Email" value={loginEmail} onChange={(e) => setLoginEmail(e.target.value)} />
+          <Input type="password" placeholder="Password" value={loginPassword} onChange={(e) => setLoginPassword(e.target.value)} />
+          {error && <p className="text-sm text-red-600">{error}</p>}
+          <div className="flex gap-2">
+            <Button onClick={() => handleAuth('login')}>Login</Button>
+            <Button variant="outline" onClick={() => handleAuth('register')}>Register</Button>
+          </div>
+          <p className="text-xs text-muted-foreground">Your ticker dashboard is saved per account on the backend store.</p>
+        </div>
+      </div>
+    );
+  }
+
   if (selectedStock) {
     const latest = stocks.find((stock) => stock.symbol === selectedStock.symbol) || selectedStock;
     return <StockDetail stock={latest} onBack={() => setSelectedStock(null)} />;
@@ -127,16 +176,25 @@ export default function App() {
               <DollarSign className="h-8 w-8 text-primary" />
               <h1 className="text-2xl font-bold">StockPredict</h1>
             </div>
-            <Badge variant="secondary" className="gap-1 cursor-help">
-              <Activity className="h-4 w-4 animate-pulse text-green-500" />
-              Live Market
-            </Badge>
+            <div className="flex items-center gap-3">
+              <Badge variant="secondary" className="gap-1 cursor-help">
+                <Activity className="h-4 w-4 animate-pulse text-green-500" />
+                Live Market
+              </Badge>
+              <Button variant="outline" size="sm" onClick={() => { clearStoredToken(); setUserEmail(''); }}>Logout</Button>
+            </div>
           </div>
+          <p className="text-xs text-muted-foreground mt-2">Signed in as {userEmail}</p>
         </div>
       </header>
 
       <div className="container mx-auto px-4 py-6">
         <MarketSummary stocks={stocks} marketSummary={marketSummary} />
+
+        <div className="mb-2 text-xs text-muted-foreground">
+          Last refresh market date: <span className="font-medium">{lastRefreshDate || 'N/A'}</span>
+          {usedCacheOnly && <span className="ml-2">(served from cached snapshot)</span>}
+        </div>
 
         <div className="mb-6">
           <StockSearch
@@ -156,7 +214,7 @@ export default function App() {
               <p className="font-medium">Data transparency</p>
               <p className="text-muted-foreground mt-1">
                 Live quote, profile, and news data are fetched from Finnhub on the backend.
-                You can verify symbols and trends on independent sources like Yahoo Finance and Google Finance.
+                Weekend requests are served from saved snapshots whenever available.
               </p>
               <div className="flex flex-wrap gap-3 mt-2">
                 <a href="https://finnhub.io/docs/api" target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 underline">
@@ -164,9 +222,6 @@ export default function App() {
                 </a>
                 <a href="https://finance.yahoo.com/" target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 underline">
                   Yahoo Finance <ExternalLink className="h-3 w-3" />
-                </a>
-                <a href="https://www.google.com/finance" target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 underline">
-                  Google Finance <ExternalLink className="h-3 w-3" />
                 </a>
               </div>
             </div>
@@ -194,12 +249,6 @@ export default function App() {
             <StockCard key={stock.symbol} stock={stock} onClick={() => setSelectedStock(stock)} />
           ))}
         </div>
-
-        {!isLoading && filteredStocks.length === 0 && (
-          <div className="text-center py-12 text-muted-foreground">
-            No stocks found matching <span className="font-medium text-foreground">"{searchTerm}"</span>.
-          </div>
-        )}
       </div>
     </div>
   );

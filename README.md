@@ -130,3 +130,16 @@ After deployment finishes, Render gives you a live URL in the service page (for 
 - The UI now includes source transparency links (Finnhub docs, Yahoo Finance, Google Finance) so users can independently verify symbol behavior.
 
 - Finnhub free plans have rate limits. The backend uses short-term caching and stale-on-rate-limit fallback to reduce 429 failures during normal browsing.
+
+
+## Account login + personal dashboard storage
+
+- The backend now supports account registration/login (`/api/auth/register`, `/api/auth/login`, `/api/auth/me`).
+- Each account has its own saved portfolio list.
+- Data is stored in a lightweight JSON store at `server/data/store.json` (free, local persistence).
+
+## Weekend / market-close snapshot behavior
+
+- On Saturday/Sunday (New York time), stock requests prefer cached Friday snapshots from backend storage.
+- If a weekend snapshot is missing for a symbol, the backend fetches once from Finnhub and stores it.
+- API responses include `lastRefreshDate` and `usedCacheOnly` so the UI can show when data was last refreshed and whether cache was used.
