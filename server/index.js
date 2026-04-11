@@ -169,9 +169,14 @@ createServer(async (req, res) => {
       if (!q) return json(res, 200, { results: [] });
       const data = await finnhubFetch('search', { q });
       const results = (data?.result || [])
-        .filter((item) => item.type === 'Common Stock' && item.symbol)
-        .slice(0, 8)
-        .map((item) => ({ symbol: item.symbol, name: item.description || item.displaySymbol || item.symbol }));
+        .filter((item) => item.symbol)
+        .slice(0, 12)
+        .map((item) => ({
+          symbol: item.symbol,
+          name: item.description || item.displaySymbol || item.symbol,
+          exchange: item.primaryExchange || item.exchange || '',
+          type: item.type || '',
+        }));
       return json(res, 200, { results });
     }
 

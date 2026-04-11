@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, BarChart3, Activity, TrendingUp, TrendingDown, Info, ExternalLink } from 'lucide-react';
+import { ArrowLeft, BarChart3, Activity, TrendingUp, TrendingDown, Info, ExternalLink, ShieldCheck } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
@@ -83,6 +83,10 @@ export function StockDetail({ stock, onBack }: StockDetailProps) {
                 {analystConsensus && <span className={`text-xs font-semibold px-2 py-0.5 rounded border ${analystColor}`}>Analyst: {analystConsensus.consensus}</span>}
               </div>
               <p className="text-muted-foreground text-sm">{stock.name}</p>
+              <div className="text-xs mt-1 flex gap-3 flex-wrap">
+                <a href={`https://finance.yahoo.com/quote/${stock.symbol}`} target="_blank" rel="noreferrer" className="underline inline-flex items-center gap-1">Yahoo Finance <ExternalLink className="h-3 w-3" /></a>
+                <a href={`https://www.google.com/finance/quote/${stock.symbol}:NYSE`} target="_blank" rel="noreferrer" className="underline inline-flex items-center gap-1">Google Finance <ExternalLink className="h-3 w-3" /></a>
+              </div>
             </div>
             <Badge variant="secondary" className="gap-1 shrink-0">
               <Activity className="h-4 w-4 text-green-500" />
@@ -144,6 +148,12 @@ export function StockDetail({ stock, onBack }: StockDetailProps) {
           <TabsContent value="analysts"><Card><CardHeader><CardTitle className="flex items-center gap-2">Wall Street Analyst Ratings <Tooltip><TooltipTrigger asChild><Info className="h-4 w-4 text-muted-foreground cursor-help" /></TooltipTrigger><TooltipContent side="right" className="max-w-xs text-xs">{METRIC_TOOLTIPS.analystConsensus}</TooltipContent></Tooltip></CardTitle></CardHeader><CardContent>{detail?.analystConsensus ? <AnalystRatings consensus={detail.analystConsensus} currentPrice={stock.price} symbol={stock.symbol} /> : <p className="text-muted-foreground text-sm">Analyst data not available for this stock.</p>}</CardContent></Card></TabsContent>
 
           <TabsContent value="news" className="space-y-3">
+            <Card className="border-green-200 bg-green-50/50">
+              <CardContent className="pt-3 pb-3 text-sm flex items-start gap-2">
+                <ShieldCheck className="h-4 w-4 text-green-600 mt-0.5" />
+                <span>News and quote data are sourced from Finnhub. Cross-check using Yahoo/Google links above.</span>
+              </CardContent>
+            </Card>
             {news.map((item) => (
               <Card key={item.id}><CardContent className="pt-4 pb-4"><h3 className="font-medium text-sm">{item.headline}</h3><p className="text-sm text-muted-foreground mt-1">{item.summary}</p><div className="text-xs text-muted-foreground mt-2 flex items-center gap-3"><span>{item.source}</span><a href={item.url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 underline">Open <ExternalLink className="h-3 w-3" /></a></div></CardContent></Card>
             ))}

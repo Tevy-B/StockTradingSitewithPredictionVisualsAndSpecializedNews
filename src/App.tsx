@@ -1,20 +1,21 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Search, DollarSign, Activity, Info, Plus } from 'lucide-react';
+import { DollarSign, Activity, Info, ShieldCheck, ExternalLink } from 'lucide-react';
 import { StockCard } from './components/StockCard';
 import { StockDetail } from './components/StockDetail';
 import { MarketSummary } from './components/MarketSummary';
-import { Input } from './components/ui/input';
 import { Badge } from './components/ui/badge';
-import { Button } from './components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from './components/ui/tooltip';
 import { filterStocks, Stock } from './utils/stockUtils';
-import { addTickerToPortfolio, getPortfolio, getStocks } from './services/api';
+import { addTickerToPortfolio, getPortfolio, getStocks, searchSymbols } from './services/api';
+import { StockSearch, StockSuggestion } from './components/StockSearch';
 
 export default function App() {
   const [stocks, setStocks] = useState<Stock[]>([]);
   const [portfolioSymbols, setPortfolioSymbols] = useState<string[]>([]);
   const [selectedStock, setSelectedStock] = useState<Stock | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const [suggestions, setSuggestions] = useState<StockSuggestion[]>([]);
+  const [isSuggestionsLoading, setIsSuggestionsLoading] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -72,8 +73,30 @@ export default function App() {
     return () => clearInterval(interval);
   }, [portfolioSymbols]);
 
-  const handleAddTicker = async () => {
-    const symbol = searchTerm.trim().toUpperCase();
+  useEffect(() => {
+    const query = searchTerm.trim();
+    if (!query) {
+      setSuggestions([]);
+      return;
+    }
+
+    const timeout = setTimeout(async () => {
+      try {
+        setIsSuggestionsLoading(true);
+        const results = await searchSymbols(query);
+        setSuggestions(results);
+      } catch {
+        setSuggestions([]);
+      } finally {
+        setIsSuggestionsLoading(false);
+      }
+    }, 250);
+
+    return () => clearTimeout(timeout);
+  }, [searchTerm]);
+
+  const addTicker = async (symbolInput: string) => {
+    const symbol = symbolInput.trim().toUpperCase();
     if (!symbol) return;
 
     try {
@@ -82,6 +105,7 @@ export default function App() {
       setPortfolioSymbols(symbols);
       await refreshStocks(symbols);
       setSearchTerm('');
+      setSuggestions([]);
     } catch (addError) {
       setError(addError instanceof Error ? addError.message : 'Unable to add ticker.');
     }
@@ -98,7 +122,7 @@ export default function App() {
     <div className="min-h-screen bg-background">
       <header className="border-b border-border bg-card">
         <div className="container mx-auto px-4 py-4">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between gap-4">
             <div className="flex items-center gap-2">
               <DollarSign className="h-8 w-8 text-primary" />
               <h1 className="text-2xl font-bold">StockPredict</h1>
@@ -114,20 +138,39 @@ export default function App() {
       <div className="container mx-auto px-4 py-6">
         <MarketSummary stocks={stocks} marketSummary={marketSummary} />
 
-        <div className="flex gap-3 mb-6">
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Search or type a ticker to add (e.g. AAPL, NFLX)..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-9"
-            />
+        <div className="mb-6">
+          <StockSearch
+            value={searchTerm}
+            onQueryChange={setSearchTerm}
+            onAddTicker={() => addTicker(searchTerm)}
+            onSelectSuggestion={(suggestion) => addTicker(suggestion.symbol)}
+            suggestions={suggestions}
+            isLoading={isSuggestionsLoading}
+          />
+        </div>
+
+        <div className="rounded-lg border border-border bg-card p-4 mb-6 text-sm">
+          <div className="flex items-start gap-2">
+            <ShieldCheck className="h-5 w-5 text-green-600 mt-0.5" />
+            <div>
+              <p className="font-medium">Data transparency</p>
+              <p className="text-muted-foreground mt-1">
+                Live quote, profile, and news data are fetched from Finnhub on the backend.
+                You can verify symbols and trends on independent sources like Yahoo Finance and Google Finance.
+              </p>
+              <div className="flex flex-wrap gap-3 mt-2">
+                <a href="https://finnhub.io/docs/api" target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 underline">
+                  Finnhub API docs <ExternalLink className="h-3 w-3" />
+                </a>
+                <a href="https://finance.yahoo.com/" target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 underline">
+                  Yahoo Finance <ExternalLink className="h-3 w-3" />
+                </a>
+                <a href="https://www.google.com/finance" target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 underline">
+                  Google Finance <ExternalLink className="h-3 w-3" />
+                </a>
+              </div>
+            </div>
           </div>
-          <Button onClick={handleAddTicker} className="gap-2">
-            <Plus className="h-4 w-4" />
-            Add ticker
-          </Button>
         </div>
 
         {error && <p className="text-sm text-red-600 mb-4">{error}</p>}

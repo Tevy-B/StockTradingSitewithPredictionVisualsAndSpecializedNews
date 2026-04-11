@@ -22,7 +22,7 @@ interface StockNewsResponse {
 }
 
 interface SearchResponse {
-  results: Array<{ symbol: string; name: string }>;
+  results: Array<{ symbol: string; name: string; exchange?: string; type?: string }>;
 }
 
 const apiFetch = async <T>(path: string, init?: RequestInit): Promise<T> => {
