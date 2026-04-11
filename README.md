@@ -94,3 +94,30 @@ This serves both the built front-end and API from one Node process.
 - You can add any valid ticker symbol from the UI.
 - Recent company news is fetched live.
 - Financial/analyst deep-detail tab data still uses the project’s local fallback dataset where live equivalents are not yet wired.
+
+
+---
+
+## GitHub + Render authorization (what you need to click)
+
+I cannot grant cloud permissions from inside this coding environment. You must authorize Render with your GitHub account in your browser.
+
+Use these links:
+
+1. Authorize GitHub in Render:
+   - https://dashboard.render.com/select-repo
+2. Create a Blueprint deploy from your repo:
+   - `https://dashboard.render.com/blueprint/new?repo=<YOUR_GITHUB_REPO_URL>`
+
+After deployment finishes, Render gives you a live URL in the service page (for example `https://stockpredict-live.onrender.com`).
+
+### Click-through checklist
+
+1. Open Render dashboard and connect your GitHub account.
+2. Select this repository.
+3. Confirm the `render.yaml` blueprint values.
+4. Add `FINNHUB_API_KEY` when prompted.
+5. Click **Apply** / **Deploy**.
+6. Open the generated Render URL and test:
+   - `/` for the UI
+   - `/api/health` for backend status

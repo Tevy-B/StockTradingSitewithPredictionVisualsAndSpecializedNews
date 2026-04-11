@@ -1,8 +1,10 @@
 services:
   - type: web
     name: stockpredict-live
-    env: node
+    runtime: node
     plan: free
+    autoDeploy: true
+    healthCheckPath: /api/health
     buildCommand: npm install && npm run build
     startCommand: npm run start
     envVars:
