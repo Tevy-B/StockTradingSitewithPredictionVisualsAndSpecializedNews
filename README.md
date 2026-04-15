@@ -1,26 +1,145 @@
+# Stock Trading Site with Prediction Meter
 
-  # Stock Trading Site with Prediction Meter
+This repository now supports both:
+1. **Local development** (front-end + API server), and
+2. **Public hosting** as a single full-stack web app.
 
-  This is a code bundle for Stock Trading Site with Prediction Meter. 
-  
-  ### Prototype(view-only)
-  
-  [https://www.figma.com/design/d8bfzb4WuPsTIx5Q7eNhsj/Stock-Trading-Site-with-Prediction-Meter.](https://www.figma.com/make/d8bfzb4WuPsTIx5Q7eNhsj/Stock-Trading-Site-with-Prediction-Meter?fullscreen=1&t=7KJ1NVsYoJ3BugA9-1)
+## Live data + token safety
 
-  ## Running the code
+The Finnhub token is used **only on the server** (`FINNHUB_API_KEY`) and is never bundled into browser code.
 
-  Run `npm i` to install the dependencies.
+---
 
-  Run `npm run dev` to start the development server.
+## Local setup
+
+### 1) Configure environment
+
+Copy `.env.example` to `.env` and set your key:
+
+```bash
+cp .env.example .env
+```
+
+Then edit `.env`:
+
+```env
+FINNHUB_API_KEY=your_finnhub_api_key_here
+PORT=8787
+```
+
+### 2) Install and run
+
+```bash
+npm i
+npm run dev:server
+```
+
+In another terminal:
+
+```bash
+npm run dev
+```
+
+- Front-end (Vite): `http://localhost:3000`
+- API server: `http://localhost:8787`
+
+The Vite dev server proxies `/api` to the backend.
+
+---
+
+## Public deployment (website you can open from anywhere)
+
+### Option A: Render (easy)
+
+This repo includes `render.yaml` and can run as one Node web service.
+
+1. Push this repo to GitHub.
+2. In Render, create a **New Web Service** from the repo.
+3. Render will read `render.yaml`.
+4. Add environment variable:
+   - `FINNHUB_API_KEY=<your key>`
+5. Deploy.
+
+Render gives you a public URL like:
+`https://stockpredict-live.onrender.com`
+
+### Option B: Docker (any cloud/VPS)
+
+Build and run:
+
+```bash
+docker build -t stockpredict-live .
+docker run -p 8787:8787 -e FINNHUB_API_KEY=your_key stockpredict-live
+```
+
+Then open `http://<your-server-ip>:8787`.
+
+---
+
+## Production run (without Docker)
+
+```bash
+npm i
+npm run build
+FINNHUB_API_KEY=your_key npm run start
+```
+
+This serves both the built front-end and API from one Node process.
+
+---
+
+## Notes
+
+- Default portfolio tickers load at startup.
+- You can add any valid ticker symbol from the UI.
+- Recent company news is fetched live.
+- Financial/analyst detail now attempts to use live Finnhub metric/financial/recommendation/target data and falls back to local dataset when unavailable.
 
 
-  # Please note
-  
-  This repository is proprietary. All content (code, design files, images, animations, and documentation) is Copyright © 2026 Tevy-B. All rights reserved — no reuse, distribution, or derivative works are permitted without express written permission.
-  Some design elements were created with Figma AI; prompts were written and curated by the repository author (Tevy-B). See LICENSE-ASSETS.md and LICENSE for details.
-  The Figma prototype link above is publicly viewable. If the repository is public, anyone visiting the repo on GitHub will be able to read this README and click the prototype link to view the demo. If the repository is private, the README and link will not be visible to the public — the prototype URL will still be accessible directly by anyone with the link.
-  
-  # Contact
-  
-  For permissions or licensing requests: https://github.com/Tevy-B
-  
+---
+
+## GitHub + Render authorization (what you need to click)
+
+I cannot grant cloud permissions from inside this coding environment. You must authorize Render with your GitHub account in your browser.
+
+Use these links:
+
+1. Authorize GitHub in Render:
+   - https://dashboard.render.com/select-repo
+2. Create a Blueprint deploy from your repo:
+   - `https://dashboard.render.com/blueprint/new?repo=<YOUR_GITHUB_REPO_URL>`
+
+After deployment finishes, Render gives you a live URL in the service page (for example `https://stockpredict-live.onrender.com`).
+
+### Click-through checklist
+
+1. Open Render dashboard and connect your GitHub account.
+2. Select this repository.
+3. Confirm the `render.yaml` blueprint values.
+4. Add `FINNHUB_API_KEY` when prompted.
+5. Click **Apply** / **Deploy**.
+6. Open the generated Render URL and test:
+   - `/` for the UI
+   - `/api/health` for backend status
+
+
+## Search + trust improvements
+
+- You can now type a company name (e.g. **Eli Lilly**) and receive Finnhub-powered ticker suggestions with exchange metadata (such as NYSE/NASDAQ when available).
+- Clicking a suggestion adds the selected ticker to your portfolio and loads live quote/news data.
+- The UI now includes source transparency links (Finnhub docs, Yahoo Finance, Google Finance) so users can independently verify symbol behavior.
+
+- Finnhub free plans have rate limits. The backend uses short-term caching and stale-on-rate-limit fallback to reduce 429 failures during normal browsing.
+
+
+## Account login + personal dashboard storage
+
+- The backend now supports account registration/login (`/api/auth/register`, `/api/auth/login`, `/api/auth/me`).
+- Each account has its own saved portfolio list.
+- Data is stored in a lightweight JSON store at `server/data/store.json` (free, local persistence).
+
+## Weekend / market-close snapshot behavior
+
+- On Saturday/Sunday (New York time), stock requests prefer cached Friday snapshots from backend storage.
+- If a weekend snapshot is missing for a symbol, the backend fetches once from Finnhub and stores it.
+- API responses include `lastRefreshDate` and `usedCacheOnly` so the UI can show when data was last refreshed and whether cache was used.

@@ -1,87 +1,102 @@
-import React, { useState } from 'react';
-import { Search, X } from 'lucide-react';
+import React, { useMemo, useState } from 'react';
+import { Search, X, Plus } from 'lucide-react';
 import { Input } from './ui/input';
 import { Button } from './ui/button';
 import { Card, CardContent } from './ui/card';
 
-interface StockSearchProps {
-  onSearch: (query: string) => void;
-  suggestions?: Array<{
-    symbol: string;
-    name: string;
-  }>;
+export interface StockSuggestion {
+  symbol: string;
+  name: string;
+  exchange?: string;
+  type?: string;
 }
 
-export function StockSearch({ onSearch, suggestions = [] }: StockSearchProps) {
-  const [query, setQuery] = useState('');
+interface StockSearchProps {
+  value: string;
+  onQueryChange: (query: string) => void;
+  onSelectSuggestion: (suggestion: StockSuggestion) => void;
+  onAddTicker: () => void;
+  suggestions?: StockSuggestion[];
+  isLoading?: boolean;
+}
+
+export function StockSearch({
+  value,
+  onQueryChange,
+  onSelectSuggestion,
+  onAddTicker,
+  suggestions = [],
+  isLoading = false,
+}: StockSearchProps) {
   const [showSuggestions, setShowSuggestions] = useState(false);
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = e.target.value;
-    setQuery(value);
-    setShowSuggestions(value.length > 0);
-    onSearch(value);
-  };
-
-  const handleSuggestionClick = (suggestion: { symbol: string; name: string }) => {
-    setQuery(suggestion.symbol);
-    setShowSuggestions(false);
-    onSearch(suggestion.symbol);
-  };
+  const filteredSuggestions = useMemo(() => {
+    return suggestions.slice(0, 8);
+  }, [suggestions]);
 
   const clearSearch = () => {
-    setQuery('');
     setShowSuggestions(false);
-    onSearch('');
+    onQueryChange('');
   };
 
-  const filteredSuggestions = suggestions.filter(
-    item => 
-      item.symbol.toLowerCase().includes(query.toLowerCase()) ||
-      item.name.toLowerCase().includes(query.toLowerCase())
-  ).slice(0, 5);
-
   return (
-    <div className="relative">
-      <div className="relative">
-        <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-        <Input
-          type="text"
-          placeholder="Search stocks by symbol or name..."
-          value={query}
-          onChange={handleInputChange}
-          className="pl-9 pr-10"
-          onFocus={() => setShowSuggestions(query.length > 0)}
-        />
-        {query && (
-          <Button
-            variant="ghost"
-            size="sm"
-            className="absolute right-1 top-1 h-8 w-8 p-0"
-            onClick={clearSearch}
-          >
-            <X className="h-4 w-4" />
-          </Button>
-        )}
+    <div className="relative w-full">
+      <div className="relative flex gap-2">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+          <Input
+            type="text"
+            placeholder="Search any ticker or company (e.g. Eli Lilly, LLY, Sony)..."
+            value={value}
+            onChange={(e) => {
+              const nextValue = e.target.value;
+              onQueryChange(nextValue);
+              setShowSuggestions(nextValue.trim().length > 0);
+            }}
+            className="pl-9 pr-10"
+            onFocus={() => setShowSuggestions(value.trim().length > 0)}
+          />
+          {value && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="absolute right-1 top-1 h-8 w-8 p-0"
+              onClick={clearSearch}
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          )}
+        </div>
+        <Button onClick={onAddTicker} className="gap-2">
+          <Plus className="h-4 w-4" />
+          Add ticker
+        </Button>
       </div>
 
-      {/* Suggestions Dropdown */}
-      {showSuggestions && filteredSuggestions.length > 0 && (
-        <Card className="absolute top-full left-0 right-0 z-50 mt-1 border-border">
+      {showSuggestions && (
+        <Card className="absolute top-full left-0 right-0 z-50 mt-1 border-border shadow-lg">
           <CardContent className="p-2">
-            {filteredSuggestions.map((suggestion) => (
-              <div
-                key={suggestion.symbol}
-                className="flex items-center justify-between p-2 hover:bg-muted rounded cursor-pointer"
-                onClick={() => handleSuggestionClick(suggestion)}
+            {isLoading && <div className="text-sm text-muted-foreground p-2">Searching Finnhub…</div>}
+            {!isLoading && filteredSuggestions.length === 0 && (
+              <div className="text-sm text-muted-foreground p-2">No ticker matches found.</div>
+            )}
+            {!isLoading && filteredSuggestions.map((suggestion) => (
+              <button
+                key={`${suggestion.symbol}-${suggestion.exchange || ''}`}
+                className="w-full text-left flex items-center justify-between p-2 hover:bg-muted rounded cursor-pointer"
+                onClick={() => {
+                  onQueryChange(suggestion.symbol);
+                  onSelectSuggestion(suggestion);
+                  setShowSuggestions(false);
+                }}
               >
                 <div>
-                  <div className="font-medium">{suggestion.symbol}</div>
-                  <div className="text-sm text-muted-foreground truncate">
-                    {suggestion.name}
+                  <div className="font-medium">{suggestion.symbol} — {suggestion.name}</div>
+                  <div className="text-xs text-muted-foreground">
+                    {suggestion.exchange || 'Unknown exchange'}{suggestion.type ? ` • ${suggestion.type}` : ''}
                   </div>
                 </div>
-              </div>
+              </button>
             ))}
           </CardContent>
         </Card>
