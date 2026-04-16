@@ -7,6 +7,20 @@ interface SearchResponse { results: Array<{ symbol: string; name: string; exchan
 interface StockNewsResponse { news: StockNewsItem[]; }
 interface AuthResponse { token: string; user: { id: string; email: string }; }
 
+interface StockChartPoint {
+  time: number;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+}
+
+interface StockChartResponse {
+  points: StockChartPoint[];
+  source: string;
+}
+
 export interface StockNewsItem {
   id: number;
   headline: string;
@@ -48,3 +62,5 @@ export const getStocks = async (symbols: string[]) => apiFetch<StocksResponse>(`
 export const searchSymbols = async (query: string) => query.trim() ? (await apiFetch<SearchResponse>(`/api/stocks/search?q=${encodeURIComponent(query)}`)).results : [];
 export const getStockDetail = async (symbol: string) => (await apiFetch<StockDetailResponse>(`/api/stocks/${encodeURIComponent(symbol)}/detail`)).detail;
 export const getStockNews = async (symbol: string) => (await apiFetch<StockNewsResponse>(`/api/stocks/${encodeURIComponent(symbol)}/news`)).news;
+
+export const getStockChart = async (symbol: string, days: number) => (await apiFetch<StockChartResponse>(`/api/stocks/${encodeURIComponent(symbol)}/chart?days=${days}`)).points;

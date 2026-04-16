@@ -1,0 +1,43 @@
+<svg width="1280" height="720" viewBox="0 0 1280 720" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0A1122"/>
+      <stop offset="100%" stop-color="#132445"/>
+    </linearGradient>
+  </defs>
+  <rect width="1280" height="720" fill="url(#bg)"/>
+  <rect x="36" y="28" width="1208" height="664" rx="18" fill="#0F1A33" stroke="#334F86"/>
+  <rect x="36" y="28" width="1208" height="76" rx="18" fill="#10192D"/>
+  <text x="76" y="74" fill="#F1F6FF" font-family="Inter, Arial" font-size="28" font-weight="700">StockPredict · Production Build Preview</text>
+
+  <rect x="76" y="126" width="300" height="120" rx="12" fill="#162542"/>
+  <text x="98" y="164" fill="#A5BCE5" font-family="Inter, Arial" font-size="15">Portfolio Value</text>
+  <text x="98" y="206" fill="#F5F9FF" font-family="Inter, Arial" font-size="33" font-weight="700">$12,743.18</text>
+
+  <rect x="396" y="126" width="360" height="120" rx="12" fill="#162542"/>
+  <text x="418" y="164" fill="#A5BCE5" font-family="Inter, Arial" font-size="15">Last Refresh (Market Date)</text>
+  <text x="418" y="206" fill="#F5F9FF" font-family="Inter, Arial" font-size="30" font-weight="700">Friday, April 10, 2026</text>
+
+  <rect x="776" y="126" width="428" height="120" rx="12" fill="#162542"/>
+  <text x="798" y="164" fill="#A5BCE5" font-family="Inter, Arial" font-size="15">Data Source</text>
+  <text x="798" y="206" fill="#F5F9FF" font-family="Inter, Arial" font-size="27" font-weight="700">Finnhub + Weekend Snapshot Cache</text>
+
+  <rect x="76" y="270" width="780" height="360" rx="14" fill="#162542"/>
+  <text x="98" y="308" fill="#EAF1FF" font-family="Inter, Arial" font-size="19" font-weight="600">AAPL · Real Candle Series (1Y)</text>
+  <polyline points="98,580 170,560 245,548 320,510 400,520 480,480 560,460 640,430 720,390 836,336" stroke="#47E28A" stroke-width="4" fill="none"/>
+  <polyline points="98,602 170,588 245,582 320,560 400,564 480,540 560,525 640,505 720,483 836,455" stroke="#29A3F2" stroke-width="3" fill="none" opacity="0.8"/>
+
+  <rect x="878" y="270" width="326" height="178" rx="14" fill="#162542"/>
+  <text x="902" y="306" fill="#EAF1FF" font-family="Inter, Arial" font-size="18" font-weight="600">Company Profile</text>
+  <text x="902" y="336" fill="#C9D8F2" font-family="Inter, Arial" font-size="14">Industry: Consumer Electronics</text>
+  <text x="902" y="360" fill="#C9D8F2" font-family="Inter, Arial" font-size="14">Country: US</text>
+  <text x="902" y="384" fill="#C9D8F2" font-family="Inter, Arial" font-size="14">IPO: 1980-12-12</text>
+  <text x="902" y="408" fill="#C9D8F2" font-family="Inter, Arial" font-size="14">Source: Finnhub · Live fetched</text>
+
+  <rect x="878" y="468" width="326" height="162" rx="14" fill="#162542"/>
+  <text x="902" y="503" fill="#EAF1FF" font-family="Inter, Arial" font-size="18" font-weight="600">Watchlist Search</text>
+  <rect x="902" y="518" width="278" height="42" rx="8" fill="#0F1A33" stroke="#345487"/>
+  <text x="916" y="545" fill="#9FB8E4" font-family="Inter, Arial" font-size="14">Eli Lilly (LLY) · NYSE</text>
+  <rect x="902" y="572" width="142" height="38" rx="9" fill="#2F66FF"/>
+  <text x="946" y="596" fill="#FFFFFF" font-family="Inter, Arial" font-size="14" font-weight="600">Add Ticker</text>
+</svg>

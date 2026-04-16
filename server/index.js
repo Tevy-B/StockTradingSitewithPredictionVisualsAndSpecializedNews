@@ -3,6 +3,7 @@ import { stat, readFile, writeFile, mkdir } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import crypto from 'node:crypto';
+import { normalizeExchange, getWeekendTargetDate, isWeekendNy, consensusFromRecommendation } from './lib/marketUtils.js';
 
 const port = Number(process.env.PORT || 8787);
 const host = process.env.HOST || '0.0.0.0';
@@ -13,7 +14,7 @@ const __dirname = path.dirname(__filename);
 const repoRoot = path.resolve(__dirname, '..');
 const frontendBuildDir = path.resolve(repoRoot, 'build');
 const dataDir = path.resolve(__dirname, 'data');
-const storePath = path.resolve(dataDir, 'store.json');
+const storePath = process.env.STORE_PATH || path.resolve(dataDir, 'store.json');
 
 const finnhubCache = new Map();
 
@@ -40,18 +41,6 @@ const calculatePrediction = ({ changePercent, pe }) => {
   return Math.max(0, Math.min(100, Math.round(55 + momentum + valuation)));
 };
 
-const normalizeExchange = (exchange) => {
-  const raw = String(exchange || '').trim();
-  if (!raw) return 'Unknown exchange';
-  const upper = raw.toUpperCase();
-  if (upper.includes('NASDAQ')) return 'NASDAQ';
-  if (upper.includes('NEW YORK') || upper === 'NYSE' || upper.includes('NYSE')) return 'NYSE';
-  if (upper.includes('AMEX') || upper.includes('NYSE AMERICAN')) return 'NYSE American';
-  if (upper.includes('ARCA')) return 'NYSE Arca';
-  if (upper.includes('OTC')) return 'OTC';
-  return raw;
-};
-
 const json = (res, status, payload) => {
   res.writeHead(status, {
     'Content-Type': 'application/json',
@@ -74,6 +63,8 @@ const readBody = (req) => new Promise((resolve, reject) => {
   req.on('error', reject);
 });
 
+let saveQueue = Promise.resolve();
+
 let store = {
   users: [],
   sessions: [],
@@ -82,8 +73,11 @@ let store = {
 };
 
 const saveStore = async () => {
-  await mkdir(dataDir, { recursive: true });
-  await writeFile(storePath, JSON.stringify(store, null, 2), 'utf8');
+  saveQueue = saveQueue.then(async () => {
+    await mkdir(dataDir, { recursive: true });
+    await writeFile(storePath, JSON.stringify(store, null, 2), 'utf8');
+  });
+  await saveQueue;
 };
 
 const loadStore = async () => {
@@ -117,31 +111,6 @@ const getUserFromAuthHeader = (req) => {
   const session = store.sessions.find((item) => item.token === token && item.expiresAt > Date.now());
   if (!session) return null;
   return store.users.find((user) => user.id === session.userId) || null;
-};
-
-const nyDateParts = () => {
-  const dtf = new Intl.DateTimeFormat('en-US', {
-    timeZone: 'America/New_York',
-    year: 'numeric', month: '2-digit', day: '2-digit', weekday: 'short',
-  });
-  const parts = Object.fromEntries(dtf.formatToParts(new Date()).map((p) => [p.type, p.value]));
-  return {
-    weekday: parts.weekday,
-    date: `${parts.year}-${parts.month}-${parts.day}`,
-  };
-};
-
-const getWeekendTargetDate = () => {
-  const { weekday, date } = nyDateParts();
-  const d = new Date(`${date}T00:00:00-05:00`);
-  if (weekday === 'Sat') d.setDate(d.getDate() - 1);
-  if (weekday === 'Sun') d.setDate(d.getDate() - 2);
-  return d.toISOString().slice(0, 10);
-};
-
-const isWeekendNy = () => {
-  const { weekday } = nyDateParts();
-  return weekday === 'Sat' || weekday === 'Sun';
 };
 
 const finnhubFetch = async (apiPath, params = {}, options = {}) => {
@@ -230,30 +199,13 @@ const mapReportToEntry = (reportItem) => {
   };
 };
 
-const consensusFromRecommendation = (rec) => {
-  const strongBuy = safeNumber(rec?.strongBuy, 0);
-  const buy = safeNumber(rec?.buy, 0);
-  const hold = safeNumber(rec?.hold, 0);
-  const sell = safeNumber(rec?.sell, 0);
-  const strongSell = safeNumber(rec?.strongSell, 0);
-  const bullishScore = strongBuy * 2 + buy;
-  const bearishScore = strongSell * 2 + sell;
-
-  let consensus = 'Hold';
-  if (bullishScore >= bearishScore + 8) consensus = 'Strong Buy';
-  else if (bullishScore > bearishScore + 2) consensus = 'Buy';
-  else if (bearishScore >= bullishScore + 8) consensus = 'Strong Sell';
-  else if (bearishScore > bullishScore + 2) consensus = 'Sell';
-
-  return { consensus, buyCount: strongBuy + buy, holdCount: hold, sellCount: strongSell + sell };
-};
-
 const buildStockDetail = async (symbol, stockSnapshot) => {
-  const [metricResponse, financials, recommendations, priceTarget] = await Promise.all([
+  const [metricResponse, financials, recommendations, priceTarget, profile] = await Promise.all([
     finnhubFetch('stock/metric', { symbol, metric: 'all' }, { ttlMs: 1000 * 60 * 60 * 6 }),
     finnhubFetch('stock/financials-reported', { symbol }, { ttlMs: 1000 * 60 * 60 * 12 }),
     finnhubFetch('stock/recommendation', { symbol }, { ttlMs: 1000 * 60 * 60 * 6 }),
     finnhubFetch('stock/price-target', { symbol }, { ttlMs: 1000 * 60 * 60 * 6 }),
+    finnhubFetch('stock/profile2', { symbol }, { ttlMs: 1000 * 60 * 60 * 12 }),
   ]);
 
   const reports = Array.isArray(financials?.data) ? financials.data : [];
@@ -281,6 +233,18 @@ const buildStockDetail = async (symbol, stockSnapshot) => {
       holdCount: derivedConsensus.holdCount,
       sellCount: derivedConsensus.sellCount,
       ratings: [],
+    },
+    profile: {
+      exchange: normalizeExchange(profile?.exchange),
+      industry: profile?.finnhubIndustry || '',
+      country: profile?.country || '',
+      ipo: profile?.ipo || '',
+      website: profile?.weburl || '',
+      logo: profile?.logo || '',
+    },
+    sourceMeta: {
+      provider: 'Finnhub',
+      fetchedAt: new Date().toISOString(),
     },
   };
 };
@@ -436,6 +400,30 @@ createServer(async (req, res) => {
         type: item.type || '',
       }));
       return json(res, 200, { results });
+    }
+
+
+    const chartMatch = requestUrl.pathname.match(/^\/api\/stocks\/([^/]+)\/chart$/);
+    if (req.method === 'GET' && chartMatch) {
+      const symbol = decodeURIComponent(chartMatch[1]).toUpperCase();
+      const range = Number(requestUrl.searchParams.get('days') || '90');
+      const days = Number.isFinite(range) ? Math.max(7, Math.min(365, range)) : 90;
+      const to = Math.floor(Date.now() / 1000);
+      const from = to - (days * 24 * 60 * 60);
+      const data = await finnhubFetch('stock/candle', { symbol, resolution: 'D', from: String(from), to: String(to) }, { ttlMs: 1000 * 60 * 30 });
+
+      if (data?.s !== 'ok') return json(res, 200, { points: [] });
+
+      const points = (data.t || []).map((timestamp, idx) => ({
+        time: timestamp,
+        open: safeNumber(data.o?.[idx]),
+        high: safeNumber(data.h?.[idx]),
+        low: safeNumber(data.l?.[idx]),
+        close: safeNumber(data.c?.[idx]),
+        volume: safeNumber(data.v?.[idx]),
+      })).filter((point) => point.close > 0);
+
+      return json(res, 200, { points, source: 'Finnhub' });
     }
 
     const detailMatch = requestUrl.pathname.match(/^\/api\/stocks\/([^/]+)\/detail$/);
