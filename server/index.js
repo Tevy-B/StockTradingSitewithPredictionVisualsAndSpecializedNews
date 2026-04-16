@@ -3,6 +3,7 @@ import { stat, readFile, writeFile, mkdir } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import crypto from 'node:crypto';
+import { normalizeExchange, getWeekendTargetDate, isWeekendNy, consensusFromRecommendation } from './lib/marketUtils.js';
 
 const port = Number(process.env.PORT || 8787);
 const host = process.env.HOST || '0.0.0.0';
@@ -13,7 +14,7 @@ const __dirname = path.dirname(__filename);
 const repoRoot = path.resolve(__dirname, '..');
 const frontendBuildDir = path.resolve(repoRoot, 'build');
 const dataDir = path.resolve(__dirname, 'data');
-const storePath = path.resolve(dataDir, 'store.json');
+const storePath = process.env.STORE_PATH || path.resolve(dataDir, 'store.json');
 
 const finnhubCache = new Map();
 
@@ -38,18 +39,6 @@ const calculatePrediction = ({ changePercent, pe }) => {
   const momentum = Math.max(-10, Math.min(10, changePercent)) * 2.5;
   const valuation = pe > 0 ? Math.max(-15, Math.min(15, (30 - pe) * 0.6)) : 0;
   return Math.max(0, Math.min(100, Math.round(55 + momentum + valuation)));
-};
-
-const normalizeExchange = (exchange) => {
-  const raw = String(exchange || '').trim();
-  if (!raw) return 'Unknown exchange';
-  const upper = raw.toUpperCase();
-  if (upper.includes('NASDAQ')) return 'NASDAQ';
-  if (upper.includes('NEW YORK') || upper === 'NYSE' || upper.includes('NYSE')) return 'NYSE';
-  if (upper.includes('AMEX') || upper.includes('NYSE AMERICAN')) return 'NYSE American';
-  if (upper.includes('ARCA')) return 'NYSE Arca';
-  if (upper.includes('OTC')) return 'OTC';
-  return raw;
 };
 
 const json = (res, status, payload) => {
@@ -117,31 +106,6 @@ const getUserFromAuthHeader = (req) => {
   const session = store.sessions.find((item) => item.token === token && item.expiresAt > Date.now());
   if (!session) return null;
   return store.users.find((user) => user.id === session.userId) || null;
-};
-
-const nyDateParts = () => {
-  const dtf = new Intl.DateTimeFormat('en-US', {
-    timeZone: 'America/New_York',
-    year: 'numeric', month: '2-digit', day: '2-digit', weekday: 'short',
-  });
-  const parts = Object.fromEntries(dtf.formatToParts(new Date()).map((p) => [p.type, p.value]));
-  return {
-    weekday: parts.weekday,
-    date: `${parts.year}-${parts.month}-${parts.day}`,
-  };
-};
-
-const getWeekendTargetDate = () => {
-  const { weekday, date } = nyDateParts();
-  const d = new Date(`${date}T00:00:00-05:00`);
-  if (weekday === 'Sat') d.setDate(d.getDate() - 1);
-  if (weekday === 'Sun') d.setDate(d.getDate() - 2);
-  return d.toISOString().slice(0, 10);
-};
-
-const isWeekendNy = () => {
-  const { weekday } = nyDateParts();
-  return weekday === 'Sat' || weekday === 'Sun';
 };
 
 const finnhubFetch = async (apiPath, params = {}, options = {}) => {
@@ -228,24 +192,6 @@ const mapReportToEntry = (reportItem) => {
     shareholdersEquity: toBillions(findConceptValue(bs, ['StockholdersEquity', 'StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest'])),
     operatingCashFlow: toBillions(findConceptValue(cf, ['NetCashProvidedByUsedInOperatingActivities', 'NetCashProvidedByUsedInOperatingActivitiesContinuingOperations'])),
   };
-};
-
-const consensusFromRecommendation = (rec) => {
-  const strongBuy = safeNumber(rec?.strongBuy, 0);
-  const buy = safeNumber(rec?.buy, 0);
-  const hold = safeNumber(rec?.hold, 0);
-  const sell = safeNumber(rec?.sell, 0);
-  const strongSell = safeNumber(rec?.strongSell, 0);
-  const bullishScore = strongBuy * 2 + buy;
-  const bearishScore = strongSell * 2 + sell;
-
-  let consensus = 'Hold';
-  if (bullishScore >= bearishScore + 8) consensus = 'Strong Buy';
-  else if (bullishScore > bearishScore + 2) consensus = 'Buy';
-  else if (bearishScore >= bullishScore + 8) consensus = 'Strong Sell';
-  else if (bearishScore > bullishScore + 2) consensus = 'Sell';
-
-  return { consensus, buyCount: strongBuy + buy, holdCount: hold, sellCount: strongSell + sell };
 };
 
 const buildStockDetail = async (symbol, stockSnapshot) => {
