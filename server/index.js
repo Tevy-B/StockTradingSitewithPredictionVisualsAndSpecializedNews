@@ -195,11 +195,12 @@ const mapReportToEntry = (reportItem) => {
 };
 
 const buildStockDetail = async (symbol, stockSnapshot) => {
-  const [metricResponse, financials, recommendations, priceTarget] = await Promise.all([
+  const [metricResponse, financials, recommendations, priceTarget, profile] = await Promise.all([
     finnhubFetch('stock/metric', { symbol, metric: 'all' }, { ttlMs: 1000 * 60 * 60 * 6 }),
     finnhubFetch('stock/financials-reported', { symbol }, { ttlMs: 1000 * 60 * 60 * 12 }),
     finnhubFetch('stock/recommendation', { symbol }, { ttlMs: 1000 * 60 * 60 * 6 }),
     finnhubFetch('stock/price-target', { symbol }, { ttlMs: 1000 * 60 * 60 * 6 }),
+    finnhubFetch('stock/profile2', { symbol }, { ttlMs: 1000 * 60 * 60 * 12 }),
   ]);
 
   const reports = Array.isArray(financials?.data) ? financials.data : [];
@@ -227,6 +228,18 @@ const buildStockDetail = async (symbol, stockSnapshot) => {
       holdCount: derivedConsensus.holdCount,
       sellCount: derivedConsensus.sellCount,
       ratings: [],
+    },
+    profile: {
+      exchange: normalizeExchange(profile?.exchange),
+      industry: profile?.finnhubIndustry || '',
+      country: profile?.country || '',
+      ipo: profile?.ipo || '',
+      website: profile?.weburl || '',
+      logo: profile?.logo || '',
+    },
+    sourceMeta: {
+      provider: 'Finnhub',
+      fetchedAt: new Date().toISOString(),
     },
   };
 };
@@ -382,6 +395,30 @@ createServer(async (req, res) => {
         type: item.type || '',
       }));
       return json(res, 200, { results });
+    }
+
+
+    const chartMatch = requestUrl.pathname.match(/^\/api\/stocks\/([^/]+)\/chart$/);
+    if (req.method === 'GET' && chartMatch) {
+      const symbol = decodeURIComponent(chartMatch[1]).toUpperCase();
+      const range = Number(requestUrl.searchParams.get('days') || '90');
+      const days = Number.isFinite(range) ? Math.max(7, Math.min(365, range)) : 90;
+      const to = Math.floor(Date.now() / 1000);
+      const from = to - (days * 24 * 60 * 60);
+      const data = await finnhubFetch('stock/candle', { symbol, resolution: 'D', from: String(from), to: String(to) }, { ttlMs: 1000 * 60 * 30 });
+
+      if (data?.s !== 'ok') return json(res, 200, { points: [] });
+
+      const points = (data.t || []).map((timestamp, idx) => ({
+        time: timestamp,
+        open: safeNumber(data.o?.[idx]),
+        high: safeNumber(data.h?.[idx]),
+        low: safeNumber(data.l?.[idx]),
+        close: safeNumber(data.c?.[idx]),
+        volume: safeNumber(data.v?.[idx]),
+      })).filter((point) => point.close > 0);
+
+      return json(res, 200, { points, source: 'Finnhub' });
     }
 
     const detailMatch = requestUrl.pathname.match(/^\/api\/stocks\/([^/]+)\/detail$/);

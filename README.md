@@ -5,6 +5,7 @@ A modern, full-stack stock intelligence dashboard with:
 - 🔐 Account login and user-specific watchlists
 - 📈 Live market quotes + news from Finnhub (server-side token)
 - 🧠 Prediction scoring + analyst/financial detail panels
+- 📊 Real Finnhub candle chart + company profile metadata
 - 🗂 Weekend snapshot persistence to reduce market API dependency
 - 🚀 Ready for local dev, Docker, and Render deployment
 
