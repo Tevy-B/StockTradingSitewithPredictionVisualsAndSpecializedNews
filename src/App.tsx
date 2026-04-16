@@ -22,6 +22,9 @@ import {
 } from './services/api';
 import { StockSearch, StockSuggestion } from './components/StockSearch';
 
+const LAST_EMAIL_KEY = 'stockpredict_last_email';
+const getLocalPortfolioKey = (email: string) => `stockpredict_portfolio_${email.toLowerCase()}`;
+
 export default function App() {
   const [stocks, setStocks] = useState<Stock[]>([]);
   const [portfolioSymbols, setPortfolioSymbols] = useState<string[]>([]);
@@ -35,7 +38,7 @@ export default function App() {
   const [usedCacheOnly, setUsedCacheOnly] = useState(false);
 
   const [userEmail, setUserEmail] = useState('');
-  const [loginEmail, setLoginEmail] = useState('');
+  const [loginEmail, setLoginEmail] = useState(() => localStorage.getItem(LAST_EMAIL_KEY) || '');
   const [loginPassword, setLoginPassword] = useState('');
 
   const marketSummary = useMemo(() => {
@@ -66,8 +69,25 @@ export default function App() {
       const me = await getMe();
       setUserEmail(me.user.email);
       const symbols = await getPortfolio();
-      setPortfolioSymbols(symbols);
-      await refreshStocks(symbols);
+      let localSymbols: string[] = [];
+      try {
+        const parsed = JSON.parse(localStorage.getItem(getLocalPortfolioKey(payload.user.email)) || '[]');
+        localSymbols = Array.isArray(parsed) ? parsed : [];
+      } catch {
+        localSymbols = [];
+      }
+      const mergedSymbols = Array.from(new Set([...(symbols || []), ...localSymbols]));
+
+      if (mergedSymbols.length > symbols.length) {
+        for (const symbol of mergedSymbols) {
+          if (!symbols.includes(symbol)) {
+            await addTickerToPortfolio(symbol);
+          }
+        }
+      }
+
+      setPortfolioSymbols(mergedSymbols);
+      await refreshStocks(mergedSymbols);
     } catch {
       clearStoredToken();
       setUserEmail('');
@@ -79,6 +99,17 @@ export default function App() {
   useEffect(() => {
     bootstrap();
   }, []);
+
+
+  useEffect(() => {
+    if (!userEmail) return;
+    localStorage.setItem(LAST_EMAIL_KEY, userEmail);
+  }, [userEmail]);
+
+  useEffect(() => {
+    if (!userEmail || portfolioSymbols.length === 0) return;
+    localStorage.setItem(getLocalPortfolioKey(userEmail), JSON.stringify(portfolioSymbols));
+  }, [userEmail, portfolioSymbols]);
 
   useEffect(() => {
     if (!portfolioSymbols.length || !userEmail) return;
@@ -136,9 +167,27 @@ export default function App() {
         : await register(loginEmail, loginPassword);
       setStoredToken(payload.token);
       setUserEmail(payload.user.email);
+      localStorage.setItem(LAST_EMAIL_KEY, payload.user.email);
       const symbols = await getPortfolio();
-      setPortfolioSymbols(symbols);
-      await refreshStocks(symbols);
+      let localSymbols: string[] = [];
+      try {
+        const parsed = JSON.parse(localStorage.getItem(getLocalPortfolioKey(payload.user.email)) || '[]');
+        localSymbols = Array.isArray(parsed) ? parsed : [];
+      } catch {
+        localSymbols = [];
+      }
+      const mergedSymbols = Array.from(new Set([...(symbols || []), ...localSymbols]));
+
+      if (mergedSymbols.length > symbols.length) {
+        for (const symbol of mergedSymbols) {
+          if (!symbols.includes(symbol)) {
+            await addTickerToPortfolio(symbol);
+          }
+        }
+      }
+
+      setPortfolioSymbols(mergedSymbols);
+      await refreshStocks(mergedSymbols);
     } catch (authError) {
       setError(authError instanceof Error ? authError.message : 'Authentication failed.');
     }

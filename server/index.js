@@ -63,6 +63,8 @@ const readBody = (req) => new Promise((resolve, reject) => {
   req.on('error', reject);
 });
 
+let saveQueue = Promise.resolve();
+
 let store = {
   users: [],
   sessions: [],
@@ -71,8 +73,11 @@ let store = {
 };
 
 const saveStore = async () => {
-  await mkdir(dataDir, { recursive: true });
-  await writeFile(storePath, JSON.stringify(store, null, 2), 'utf8');
+  saveQueue = saveQueue.then(async () => {
+    await mkdir(dataDir, { recursive: true });
+    await writeFile(storePath, JSON.stringify(store, null, 2), 'utf8');
+  });
+  await saveQueue;
 };
 
 const loadStore = async () => {

@@ -60,6 +60,22 @@ test('auth + portfolio flow persists user symbols', async () => {
     assert.equal(portfolioResp.status, 200);
     const portfolioPayload = await portfolioResp.json();
     assert.ok(portfolioPayload.symbols.includes('LLY'));
+
+
+    const loginResp = await fetch(`http://127.0.0.1:${port}/api/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: 'qa@example.com', password: 'supersecret' }),
+    });
+    assert.equal(loginResp.status, 200);
+    const loginPayload = await loginResp.json();
+
+    const portfolioAfterLogin = await fetch(`http://127.0.0.1:${port}/api/portfolio`, {
+      headers: { Authorization: `Bearer ${loginPayload.token}` },
+    });
+    const portfolioAfterLoginPayload = await portfolioAfterLogin.json();
+    assert.ok(portfolioAfterLoginPayload.symbols.includes('LLY'));
+
   } finally {
     server.kill('SIGTERM');
   }
