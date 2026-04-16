@@ -61,9 +61,6 @@
     "build": "vite build",
     "build:server": "node --check server/index.js",
     "build:full": "npm run build && npm run build:server",
-    "start": "node server/index.js",
-    "test:unit": "node --test tests/unit/*.test.js",
-    "test:e2e": "node --test tests/e2e/*.test.js",
-    "test": "npm run test:unit && npm run test:e2e"
+    "start": "node server/index.js"
   }
 }

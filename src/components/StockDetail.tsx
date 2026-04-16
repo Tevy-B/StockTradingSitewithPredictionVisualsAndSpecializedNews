@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, BarChart3, Activity, TrendingUp, TrendingDown, Info, ExternalLink, ShieldCheck, Globe, Building2 } from 'lucide-react';
+import { ArrowLeft, BarChart3, Activity, TrendingUp, TrendingDown, Info, ExternalLink, ShieldCheck } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
@@ -15,10 +15,10 @@ import { BalanceSheet } from './BalanceSheet';
 import { AnalystRatings } from './AnalystRatings';
 import {
   Stock, getPredictionLabel, getPredictionColor,
-  getAnalystConsensusColor, METRIC_TOOLTIPS, StockExtendedDetail
+  getAnalystConsensusColor, generateChartData, METRIC_TOOLTIPS, StockExtendedDetail
 } from '../utils/stockUtils';
 import { stockDetailsMap } from '../constants/mockData';
-import { getStockChart, getStockDetail, getStockNews, StockNewsItem } from '../services/api';
+import { getStockDetail, getStockNews, StockNewsItem } from '../services/api';
 
 interface StockDetailProps {
   stock: Stock;
@@ -46,29 +46,24 @@ const CustomChartTooltip = ({ active, payload }: any) => {
 };
 
 export function StockDetail({ stock, onBack }: StockDetailProps) {
-  const [chartRange, setChartRange] = useState(90);
+  const [chartRange, setChartRange] = useState(30);
   const [news, setNews] = useState<StockNewsItem[]>([]);
   const [liveDetail, setLiveDetail] = useState<StockExtendedDetail | null>(null);
-  const [chartData, setChartData] = useState<Array<{ time: number; open: number; high: number; low: number; close: number; volume: number }>>([]);
 
   useEffect(() => {
     getStockNews(stock.symbol).then(setNews).catch(() => setNews([]));
     getStockDetail(stock.symbol).then(setLiveDetail).catch(() => setLiveDetail(null));
   }, [stock.symbol]);
 
-  useEffect(() => {
-    getStockChart(stock.symbol, chartRange).then(setChartData).catch(() => setChartData([]));
-  }, [stock.symbol, chartRange]);
-
   const predictionLabel = getPredictionLabel(stock.prediction);
   const predictionColor = getPredictionColor(stock.prediction);
   const detail = liveDetail ?? stockDetailsMap[stock.symbol];
 
-  const series = useMemo(() => chartData.map((point, index) => ({ ...point, index: index + 1 })), [chartData]);
-  const chartMin = series.length ? Math.min(...series.map(d => d.close)) * 0.98 : stock.price * 0.95;
-  const chartMax = series.length ? Math.max(...series.map(d => d.close)) * 1.02 : stock.price * 1.05;
-  const chartStart = series[0]?.close ?? stock.price;
-  const chartEnd = series[series.length - 1]?.close ?? stock.price;
+  const chartData = useMemo(() => generateChartData(stock.price, chartRange), [chartRange, stock.price]);
+  const chartMin = Math.min(...chartData.map(d => d.price)) * 0.99;
+  const chartMax = Math.max(...chartData.map(d => d.price)) * 1.01;
+  const chartStart = chartData[0]?.price ?? stock.price;
+  const chartEnd = chartData[chartData.length - 1]?.price ?? stock.price;
   const chartIsUp = chartEnd >= chartStart;
 
   const analystConsensus = detail?.analystConsensus;
@@ -117,16 +112,6 @@ export function StockDetail({ stock, onBack }: StockDetailProps) {
               <PredictionMeter value={stock.prediction} />
             </CardContent>
           </Card>
-          <Card>
-            <CardHeader><CardTitle className="text-base">Company Profile</CardTitle></CardHeader>
-            <CardContent className="space-y-2 text-sm">
-              <div className="flex items-center gap-2"><Building2 className="h-4 w-4 text-muted-foreground" /> Industry: {detail?.profile?.industry || 'N/A'}</div>
-              <div className="flex items-center gap-2"><Globe className="h-4 w-4 text-muted-foreground" /> Country: {detail?.profile?.country || 'N/A'}</div>
-              <div>IPO: {detail?.profile?.ipo || 'N/A'}</div>
-              {detail?.profile?.website && <a href={detail.profile.website} target="_blank" rel="noreferrer" className="underline">Official website</a>}
-              {detail?.sourceMeta && <p className="text-xs text-muted-foreground">Source: {detail.sourceMeta.provider} · fetched {new Date(detail.sourceMeta.fetchedAt).toLocaleString()}</p>}
-            </CardContent>
-          </Card>
         </div>
 
         <Tabs defaultValue="chart" className="space-y-4">
@@ -141,7 +126,7 @@ export function StockDetail({ stock, onBack }: StockDetailProps) {
             <Card>
               <CardHeader>
                 <div className="flex items-center justify-between flex-wrap gap-2">
-                  <CardTitle className="flex items-center gap-2">Real Price History <Badge variant="outline" className="text-xs">Source: Finnhub</Badge></CardTitle>
+                  <CardTitle className="flex items-center gap-2">Price Chart <Badge variant="outline" className="text-xs">Modelled</Badge></CardTitle>
                   <div className="flex gap-1">{chartRanges.map(r => <button key={r.label} onClick={() => setChartRange(r.days)} className={`px-2 py-1 rounded text-xs font-medium ${chartRange === r.days ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground hover:bg-muted/80'}`}>{r.label}</button>)}</div>
                 </div>
                 <div className="flex items-center gap-3 text-sm flex-wrap">
@@ -153,17 +138,16 @@ export function StockDetail({ stock, onBack }: StockDetailProps) {
                 </div>
               </CardHeader>
               <CardContent>
-                <ResponsiveContainer width="100%" height={320}>
-                  <AreaChart data={series}><CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" /><XAxis dataKey="index" tick={{ fontSize: 10 }} /><YAxis domain={[chartMin, chartMax]} tick={{ fontSize: 10 }} width={62} /><RechartsTooltip content={<CustomChartTooltip />} /><ReferenceLine y={chartStart} strokeDasharray="4 4" /><Area type="monotone" dataKey="close" stroke={chartIsUp ? '#22c55e' : '#ef4444'} strokeWidth={2} dot={false} /></AreaChart>
+                <ResponsiveContainer width="100%" height={300}>
+                  <AreaChart data={chartData}><CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" /><XAxis dataKey="time" tick={{ fontSize: 10 }} /><YAxis domain={[chartMin, chartMax]} tick={{ fontSize: 10 }} width={55} /><RechartsTooltip content={<CustomChartTooltip />} /><ReferenceLine y={chartStart} strokeDasharray="4 4" /><Area type="monotone" dataKey="price" stroke={chartIsUp ? '#22c55e' : '#ef4444'} strokeWidth={2} dot={false} /></AreaChart>
                 </ResponsiveContainer>
-                {series.length === 0 && <p className="text-xs text-muted-foreground mt-2">No chart points returned for this range.</p>}
               </CardContent>
             </Card>
           </TabsContent>
 
-          <TabsContent value="financials"><Card><CardHeader><CardTitle>Balance Sheet & Financials (Real filings)</CardTitle></CardHeader><CardContent>{detail ? <BalanceSheet detail={detail} stockPrice={stock.price} symbol={stock.symbol} /> : <p className="text-muted-foreground text-sm">Financial data not available for this stock.</p>}</CardContent></Card></TabsContent>
+          <TabsContent value="financials"><Card><CardHeader><CardTitle>Balance Sheet & Financials</CardTitle></CardHeader><CardContent>{detail ? <BalanceSheet detail={detail} stockPrice={stock.price} symbol={stock.symbol} /> : <p className="text-muted-foreground text-sm">Financial data not available for this stock.</p>}</CardContent></Card></TabsContent>
 
-          <TabsContent value="analysts"><Card><CardHeader><CardTitle className="flex items-center gap-2">Analyst Ratings & Targets <Tooltip><TooltipTrigger asChild><Info className="h-4 w-4 text-muted-foreground cursor-help" /></TooltipTrigger><TooltipContent side="right" className="max-w-xs text-xs">{METRIC_TOOLTIPS.analystConsensus}</TooltipContent></Tooltip></CardTitle></CardHeader><CardContent>{detail?.analystConsensus ? <AnalystRatings consensus={detail.analystConsensus} currentPrice={stock.price} symbol={stock.symbol} /> : <p className="text-muted-foreground text-sm">Analyst data not available for this stock.</p>}</CardContent></Card></TabsContent>
+          <TabsContent value="analysts"><Card><CardHeader><CardTitle className="flex items-center gap-2">Wall Street Analyst Ratings <Tooltip><TooltipTrigger asChild><Info className="h-4 w-4 text-muted-foreground cursor-help" /></TooltipTrigger><TooltipContent side="right" className="max-w-xs text-xs">{METRIC_TOOLTIPS.analystConsensus}</TooltipContent></Tooltip></CardTitle></CardHeader><CardContent>{detail?.analystConsensus ? <AnalystRatings consensus={detail.analystConsensus} currentPrice={stock.price} symbol={stock.symbol} /> : <p className="text-muted-foreground text-sm">Analyst data not available for this stock.</p>}</CardContent></Card></TabsContent>
 
           <TabsContent value="news" className="space-y-3">
             <Card className="border-green-200 bg-green-50/50">

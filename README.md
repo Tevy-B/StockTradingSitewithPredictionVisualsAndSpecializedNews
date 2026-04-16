@@ -1,137 +1,36 @@
-# StockPredict
+# Stock Trading Site with Prediction Meter
 
-A modern, full-stack stock intelligence dashboard with:
+This repository now supports both:
+1. **Local development** (front-end + API server), and
+2. **Public hosting** as a single full-stack web app.
 
-- 🔐 Account login and user-specific watchlists
-- 📈 Live market quotes + news from Finnhub (server-side token)
-- 🧠 Prediction scoring + analyst/financial detail panels
-- 📊 Real Finnhub candle chart + company profile metadata
-- 🗂 Weekend snapshot persistence to reduce market API dependency
-- 🚀 Ready for local dev, Docker, and Render deployment
+## Live data + token safety
 
-![StockPredict hero preview](docs/images/stockpredict-hero.svg)
+The Finnhub token is used **only on the server** (`FINNHUB_API_KEY`) and is never bundled into browser code.
 
 ---
 
-## Why StockPredict?
-
-StockPredict is designed to be transparent, fast, and practical:
-
-- **Transparent data sourcing**: users can validate symbols and trends via Finnhub/Yahoo/Google links.
-- **Operational reliability**: weekends and rate-limit scenarios use saved snapshots and cache fallback.
-- **Personalized experience**: each logged-in user sees their own portfolio and symbols.
-- **Production-ready architecture**: one Node service serves both API + front-end bundle.
-
----
-
-## UI Preview
-
-### Login Experience
-
-![Login UI preview](docs/images/login-preview.svg)
-
-### Data Flow + Weekend Strategy
-
-![Data flow diagram](docs/images/data-flow.svg)
-
----
-
-## Core Features
-
-### 1) Secure Authentication
-- Register/login endpoints (`/api/auth/register`, `/api/auth/login`, `/api/auth/me`)
-- Token-based authenticated API access
-- Password hashing in backend
-
-### 2) Personal Dashboard Persistence
-- User portfolios are stored and restored per account
-- Re-login returns the same ticker dashboard
-- Portfolio APIs are user-scoped (`/api/portfolio`)
-
-### 3) Live + Cached Market Data
-- Stock quote/profile/metric/search/news/detail endpoints under `/api/stocks/*`
-- Finnhub requests are cached with TTL to reduce API pressure
-- Stale fallback logic handles transient failures/rate limits
-
-### 4) Weekend Snapshot Mode (NY time)
-- On Saturday/Sunday, app prefers Friday-end snapshots
-- If missing, one-time fetch is stored and reused
-- API returns freshness metadata:
-  - `lastRefreshDate`
-  - `usedCacheOnly`
-
-### 5) Transparency & Trust Signals
-- In-app source references
-- Easy external verification paths (Finnhub, Yahoo, Google)
-- Clear note when cached snapshots are being used
-
----
-
-## Architecture
-
-### Frontend
-- React + Vite + TypeScript
-- Component-driven UI with stock detail, charting, and search suggestions
-
-### Backend
-- Node HTTP server (`server/index.js`)
-- Built-in auth/session handling
-- File-backed temporary data store (`server/data/store.json`)
-- Finnhub integration with request caching and weekend snapshot logic
-
-### Data Store (free approach)
-- Uses local JSON persistence (no paid DB required)
-- Suitable for temporary/free usage and quick deployments
-- On ephemeral hosts, persistence depends on host disk behavior
-
----
-
-## API Summary
-
-### Auth
-- `POST /api/auth/register`
-- `POST /api/auth/login`
-- `GET /api/auth/me`
-
-### Portfolio
-- `GET /api/portfolio`
-- `POST /api/portfolio`
-
-### Stocks
-- `GET /api/stocks?symbols=AAPL,MSFT`
-- `GET /api/stocks/search?q=eli lilly`
-- `GET /api/stocks/:symbol/detail`
-- `GET /api/stocks/:symbol/news`
-
-### Health
-- `GET /api/health`
-
----
-
-## Local Development
+## Local setup
 
 ### 1) Configure environment
+
+Copy `.env.example` to `.env` and set your key:
 
 ```bash
 cp .env.example .env
 ```
 
-Add your key:
+Then edit `.env`:
 
 ```env
 FINNHUB_API_KEY=your_finnhub_api_key_here
 PORT=8787
 ```
 
-### 2) Install dependencies
+### 2) Install and run
 
 ```bash
 npm i
-```
-
-### 3) Run backend + frontend
-
-```bash
 npm run dev:server
 ```
 
@@ -141,14 +40,43 @@ In another terminal:
 npm run dev
 ```
 
-- Frontend: `http://localhost:3000`
-- Backend: `http://localhost:8787`
+- Front-end (Vite): `http://localhost:3000`
+- API server: `http://localhost:8787`
 
-> Vite proxies `/api` to the local backend.
+The Vite dev server proxies `/api` to the backend.
 
 ---
 
-## Production Run (single service)
+## Public deployment (website you can open from anywhere)
+
+### Option A: Render (easy)
+
+This repo includes `render.yaml` and can run as one Node web service.
+
+1. Push this repo to GitHub.
+2. In Render, create a **New Web Service** from the repo.
+3. Render will read `render.yaml`.
+4. Add environment variable:
+   - `FINNHUB_API_KEY=<your key>`
+5. Deploy.
+
+Render gives you a public URL like:
+`https://stockpredict-live.onrender.com`
+
+### Option B: Docker (any cloud/VPS)
+
+Build and run:
+
+```bash
+docker build -t stockpredict-live .
+docker run -p 8787:8787 -e FINNHUB_API_KEY=your_key stockpredict-live
+```
+
+Then open `http://<your-server-ip>:8787`.
+
+---
+
+## Production run (without Docker)
 
 ```bash
 npm i
@@ -156,66 +84,62 @@ npm run build
 FINNHUB_API_KEY=your_key npm run start
 ```
 
----
-
-## Deploy Options
-
-### Render (recommended)
-
-Use the included `render.yaml`:
-
-1. Push repo to GitHub
-2. In Render, create a **Blueprint** service from this repo
-3. Set `FINNHUB_API_KEY`
-4. Deploy
-
-### Docker
-
-```bash
-docker build -t stockpredict-live .
-docker run -p 8787:8787 -e FINNHUB_API_KEY=your_key stockpredict-live
-```
+This serves both the built front-end and API from one Node process.
 
 ---
 
-## Reliability Notes
+## Notes
 
-- Finnhub free tiers enforce rate limits.
-- Backend cache + weekend snapshots significantly reduce call frequency.
-- If Finnhub is temporarily unavailable, cached data may still serve key views.
+- Default portfolio tickers load at startup.
+- You can add any valid ticker symbol from the UI.
+- Recent company news is fetched live.
+- Financial/analyst detail now attempts to use live Finnhub metric/financial/recommendation/target data and falls back to local dataset when unavailable.
 
----
-
-## Security Notes
-
-- Finnhub key stays server-side only.
-- Browser never receives the API key.
-- Auth uses token session validation and hashed passwords.
 
 ---
 
-## Project Structure
+## GitHub + Render authorization (what you need to click)
 
-```txt
-server/
-  index.js            # Node API, auth, caching, snapshots
-  data/store.json     # file-backed temporary persistence
-src/
-  App.tsx             # main app + auth UX
-  services/api.ts     # typed API client
-  components/         # dashboard/search/detail UI
-docs/images/          # README visuals
-```
+I cannot grant cloud permissions from inside this coding environment. You must authorize Render with your GitHub account in your browser.
 
----
+Use these links:
 
-## Attribution
+1. Authorize GitHub in Render:
+   - https://dashboard.render.com/select-repo
+2. Create a Blueprint deploy from your repo:
+   - `https://dashboard.render.com/blueprint/new?repo=<YOUR_GITHUB_REPO_URL>`
 
-- Market and metadata: [Finnhub](https://finnhub.io/docs/api)
-- Validation references: [Yahoo Finance](https://finance.yahoo.com/), [Google Finance](https://www.google.com/finance)
+After deployment finishes, Render gives you a live URL in the service page (for example `https://stockpredict-live.onrender.com`).
 
----
+### Click-through checklist
 
-## License & Usage
+1. Open Render dashboard and connect your GitHub account.
+2. Select this repository.
+3. Confirm the `render.yaml` blueprint values.
+4. Add `FINNHUB_API_KEY` when prompted.
+5. Click **Apply** / **Deploy**.
+6. Open the generated Render URL and test:
+   - `/` for the UI
+   - `/api/health` for backend status
 
-This repository remains proprietary as defined by the project owner. Please review existing repository license notes before reuse or distribution.
+
+## Search + trust improvements
+
+- You can now type a company name (e.g. **Eli Lilly**) and receive Finnhub-powered ticker suggestions with exchange metadata (such as NYSE/NASDAQ when available).
+- Clicking a suggestion adds the selected ticker to your portfolio and loads live quote/news data.
+- The UI now includes source transparency links (Finnhub docs, Yahoo Finance, Google Finance) so users can independently verify symbol behavior.
+
+- Finnhub free plans have rate limits. The backend uses short-term caching and stale-on-rate-limit fallback to reduce 429 failures during normal browsing.
+
+
+## Account login + personal dashboard storage
+
+- The backend now supports account registration/login (`/api/auth/register`, `/api/auth/login`, `/api/auth/me`).
+- Each account has its own saved portfolio list.
+- Data is stored in a lightweight JSON store at `server/data/store.json` (free, local persistence).
+
+## Weekend / market-close snapshot behavior
+
+- On Saturday/Sunday (New York time), stock requests prefer cached Friday snapshots from backend storage.
+- If a weekend snapshot is missing for a symbol, the backend fetches once from Finnhub and stores it.
+- API responses include `lastRefreshDate` and `usedCacheOnly` so the UI can show when data was last refreshed and whether cache was used.
