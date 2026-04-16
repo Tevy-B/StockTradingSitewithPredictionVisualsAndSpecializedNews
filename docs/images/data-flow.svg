@@ -1,0 +1,40 @@
+<svg width="1200" height="460" viewBox="0 0 1200 460" xmlns="http://www.w3.org/2000/svg">
+  <rect width="1200" height="460" fill="#0B1020"/>
+  <text x="60" y="52" fill="#ECF2FF" font-family="Inter, Arial" font-size="30" font-weight="700">StockPredict Data Flow</text>
+
+  <rect x="60" y="100" width="220" height="120" rx="12" fill="#18233F" stroke="#2D4472"/>
+  <text x="85" y="145" fill="#FFFFFF" font-family="Inter, Arial" font-size="20" font-weight="600">User Browser</text>
+  <text x="85" y="176" fill="#A9BEDF" font-family="Inter, Arial" font-size="14">React + Vite UI</text>
+
+  <rect x="360" y="100" width="250" height="120" rx="12" fill="#18233F" stroke="#2D4472"/>
+  <text x="385" y="145" fill="#FFFFFF" font-family="Inter, Arial" font-size="20" font-weight="600">Node API</text>
+  <text x="385" y="176" fill="#A9BEDF" font-family="Inter, Arial" font-size="14">Auth • Portfolio • Quotes</text>
+
+  <rect x="690" y="100" width="230" height="120" rx="12" fill="#18233F" stroke="#2D4472"/>
+  <text x="715" y="145" fill="#FFFFFF" font-family="Inter, Arial" font-size="20" font-weight="600">Snapshot Store</text>
+  <text x="715" y="176" fill="#A9BEDF" font-family="Inter, Arial" font-size="14">server/data/store.json</text>
+
+  <rect x="980" y="100" width="160" height="120" rx="12" fill="#18233F" stroke="#2D4472"/>
+  <text x="1010" y="145" fill="#FFFFFF" font-family="Inter, Arial" font-size="20" font-weight="600">Finnhub</text>
+  <text x="1002" y="176" fill="#A9BEDF" font-family="Inter, Arial" font-size="14">Live Market API</text>
+
+  <path d="M280 160 L360 160" stroke="#5E8CFF" stroke-width="3" marker-end="url(#arrow)"/>
+  <path d="M610 160 L690 160" stroke="#5E8CFF" stroke-width="3" marker-end="url(#arrow)"/>
+  <path d="M920 160 L980 160" stroke="#5E8CFF" stroke-width="3" marker-end="url(#arrow)"/>
+  <path d="M980 190 L920 190" stroke="#34D399" stroke-width="3" marker-end="url(#arrowGreen)"/>
+
+  <rect x="60" y="272" width="1080" height="132" rx="12" fill="#111A30" stroke="#2D4472"/>
+  <text x="90" y="314" fill="#FFFFFF" font-family="Inter, Arial" font-size="20" font-weight="600">Weekend Strategy (NY Time)</text>
+  <text x="90" y="346" fill="#A9BEDF" font-family="Inter, Arial" font-size="15">• Saturday/Sunday: serve Friday snapshot if available (no Finnhub hit)</text>
+  <text x="90" y="372" fill="#A9BEDF" font-family="Inter, Arial" font-size="15">• Missing snapshot: fetch once from Finnhub, then persist and reuse</text>
+  <text x="90" y="398" fill="#A9BEDF" font-family="Inter, Arial" font-size="15">• API response includes: lastRefreshDate + usedCacheOnly</text>
+
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L9,3 z" fill="#5E8CFF"/>
+    </marker>
+    <marker id="arrowGreen" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L9,3 z" fill="#34D399"/>
+    </marker>
+  </defs>
+</svg>
