@@ -1,0 +1,15 @@
+<svg width="900" height="520" viewBox="0 0 900 520" xmlns="http://www.w3.org/2000/svg">
+  <rect width="900" height="520" fill="#0A0F1C"/>
+  <rect x="240" y="70" width="420" height="380" rx="16" fill="#131C31" stroke="#2C3D66"/>
+  <text x="280" y="135" fill="#EFF5FF" font-family="Inter, Arial" font-size="28" font-weight="700">Sign in to StockPredict</text>
+  <rect x="280" y="170" width="340" height="48" rx="10" fill="#0E162A" stroke="#2C3D66"/>
+  <text x="298" y="200" fill="#8EA3C9" font-family="Inter, Arial" font-size="15">Email</text>
+  <rect x="280" y="232" width="340" height="48" rx="10" fill="#0E162A" stroke="#2C3D66"/>
+  <text x="298" y="262" fill="#8EA3C9" font-family="Inter, Arial" font-size="15">Password</text>
+  <rect x="280" y="304" width="160" height="44" rx="10" fill="#2F66FF"/>
+  <text x="336" y="332" fill="#FFFFFF" font-family="Inter, Arial" font-size="15" font-weight="600">Login</text>
+  <rect x="460" y="304" width="160" height="44" rx="10" fill="#1C2A4A" stroke="#3D5B92"/>
+  <text x="505" y="332" fill="#E8EFFF" font-family="Inter, Arial" font-size="15" font-weight="600">Register</text>
+  <text x="280" y="378" fill="#9DB2D8" font-family="Inter, Arial" font-size="14">Your ticker dashboard is saved per account.</text>
+  <text x="280" y="400" fill="#9DB2D8" font-family="Inter, Arial" font-size="14">Weekend snapshot cache reduces API dependency.</text>
+</svg>

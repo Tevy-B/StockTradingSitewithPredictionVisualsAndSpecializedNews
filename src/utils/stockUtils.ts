@@ -51,6 +51,19 @@ export interface StockExtendedDetail {
     quarterly: BalanceSheetEntry[];
   };
   analystConsensus: AnalystConsensus;
+
+  profile?: {
+    exchange?: string;
+    industry?: string;
+    country?: string;
+    ipo?: string;
+    website?: string;
+    logo?: string;
+  };
+  sourceMeta?: {
+    provider: string;
+    fetchedAt: string;
+  };
 }
 
 export const getPredictionLabel = (prediction: number): string => {

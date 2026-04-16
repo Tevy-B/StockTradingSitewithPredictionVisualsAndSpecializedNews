@@ -26,20 +26,19 @@ interface StockDetailProps {
 }
 
 const chartRanges = [
-  { label: '1W', days: 7 },
   { label: '1M', days: 30 },
   { label: '3M', days: 90 },
   { label: '6M', days: 180 },
   { label: '1Y', days: 365 },
 ];
 
-const CustomChartTooltip = ({ active, payload, label }: any) => {
+const CustomChartTooltip = ({ active, payload }: any) => {
   if (active && payload && payload.length) {
-    const val = payload[0].value as number;
+    const point = payload[0].payload;
     return (
       <div className="bg-card border border-border rounded-lg p-2.5 shadow-lg text-xs">
-        <p className="text-muted-foreground mb-1">Day {label}</p>
-        <p className="font-semibold text-foreground">${val.toFixed(2)}</p>
+        <p className="font-semibold text-foreground">Close ${point.close.toFixed(2)}</p>
+        <p className="text-muted-foreground">Open ${point.open.toFixed(2)} · High ${point.high.toFixed(2)} · Low ${point.low.toFixed(2)}</p>
       </div>
     );
   }
