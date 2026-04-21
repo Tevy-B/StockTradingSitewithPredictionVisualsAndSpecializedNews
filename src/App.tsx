@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { DollarSign, Activity, Info, ShieldCheck, ExternalLink, Sparkles, Gem } from 'lucide-react';
+import { DollarSign, Activity, Info, ShieldCheck, ExternalLink, Sparkles, Gem, Rocket, BarChart4, Shield } from 'lucide-react';
 import { StockCard } from './components/StockCard';
 import { StockDetail } from './components/StockDetail';
 import { MarketSummary } from './components/MarketSummary';
@@ -162,6 +162,7 @@ export default function App() {
   };
 
   const filteredStocks = filterStocks(stocks, searchTerm);
+  const featuredTape = (stocks.length ? stocks : []).slice(0, 8);
 
   const handleAuth = async (mode: 'login' | 'register') => {
     try {
@@ -242,14 +243,20 @@ export default function App() {
       </header>
 
       <div className="container mx-auto px-4 py-6">
-        <section className="relative overflow-hidden rounded-2xl border border-primary/20 bg-gradient-to-r from-slate-950 via-slate-900 to-indigo-950 text-white p-5 sm:p-8 mb-6">
+        <section className="lux-grid-bg relative overflow-hidden rounded-2xl border border-primary/20 bg-gradient-to-r from-slate-950 via-slate-900 to-indigo-950 text-white p-5 sm:p-8 mb-6">
           <div className="absolute -top-8 -right-8 h-40 w-40 rounded-full bg-fuchsia-500/20 blur-2xl animate-pulse" />
           <div className="absolute -bottom-10 left-10 h-32 w-32 rounded-full bg-blue-400/20 blur-2xl animate-pulse" />
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.12),transparent_45%)]" />
           <div className="relative grid gap-4 sm:grid-cols-2 items-center">
             <div className="space-y-2">
               <Badge className="bg-white/15 text-white border-white/30"><Sparkles className="h-3 w-3 mr-1" />Premium Live Intelligence</Badge>
-              <h2 className="text-2xl sm:text-3xl font-bold leading-tight">Professional market signals with transparent, real-source data.</h2>
-              <p className="text-sm text-slate-200">Track your personal watchlist, review chart trends, and validate prices with trusted external finance sources.</p>
+              <h2 className="text-2xl sm:text-3xl font-bold leading-tight">Professional-grade financial intelligence, designed for confident decisions.</h2>
+              <p className="text-sm text-slate-200">Track your personal watchlist, review chart trends, and validate prices with trusted real-market sources.</p>
+              <div className="flex flex-wrap gap-2 pt-2">
+                <Badge variant="secondary" className="bg-white/10 text-white border-white/30"><Rocket className="h-3 w-3 mr-1" /> Fast live dashboard</Badge>
+                <Badge variant="secondary" className="bg-white/10 text-white border-white/30"><BarChart4 className="h-3 w-3 mr-1" /> Actionable visuals</Badge>
+                <Badge variant="secondary" className="bg-white/10 text-white border-white/30"><Shield className="h-3 w-3 mr-1" /> Transparent sourcing</Badge>
+              </div>
             </div>
             <div className="grid gap-2 sm:justify-items-end">
               <div className="rounded-xl border border-white/20 bg-white/10 px-3 py-2 w-full sm:max-w-xs animate-pulse">
@@ -259,6 +266,41 @@ export default function App() {
               <div className="rounded-xl border border-white/20 bg-white/10 px-3 py-2 w-full sm:max-w-xs">
                 <p className="text-xs text-slate-200 flex items-center gap-1"><Gem className="h-3 w-3" /> Data confidence</p>
                 <p className="font-semibold">{usedCacheOnly ? 'Weekend cached snapshot' : 'Live + cached blend'}</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="relative mt-5 overflow-hidden rounded-xl border border-white/20 bg-black/20">
+            <div className="marquee-track py-2">
+              <div className="marquee-content">
+                {(featuredTape.length ? featuredTape : [
+                  { symbol: 'AAPL', price: 0, changePercent: 0 },
+                  { symbol: 'MSFT', price: 0, changePercent: 0 },
+                  { symbol: 'NVDA', price: 0, changePercent: 0 },
+                ]).map((item, idx) => (
+                  <span key={`${item.symbol}-${idx}`} className="mx-4 inline-flex items-center gap-2 text-xs sm:text-sm">
+                    <strong>{item.symbol}</strong>
+                    <span>{item.price ? `$${item.price.toFixed(2)}` : 'Loading…'}</span>
+                    <span className={item.changePercent >= 0 ? 'text-emerald-300' : 'text-red-300'}>
+                      {item.changePercent >= 0 ? '+' : ''}{item.changePercent.toFixed(2)}%
+                    </span>
+                  </span>
+                ))}
+              </div>
+              <div className="marquee-content" aria-hidden="true">
+                {(featuredTape.length ? featuredTape : [
+                  { symbol: 'AAPL', price: 0, changePercent: 0 },
+                  { symbol: 'MSFT', price: 0, changePercent: 0 },
+                  { symbol: 'NVDA', price: 0, changePercent: 0 },
+                ]).map((item, idx) => (
+                  <span key={`${item.symbol}-clone-${idx}`} className="mx-4 inline-flex items-center gap-2 text-xs sm:text-sm">
+                    <strong>{item.symbol}</strong>
+                    <span>{item.price ? `$${item.price.toFixed(2)}` : 'Loading…'}</span>
+                    <span className={item.changePercent >= 0 ? 'text-emerald-300' : 'text-red-300'}>
+                      {item.changePercent >= 0 ? '+' : ''}{item.changePercent.toFixed(2)}%
+                    </span>
+                  </span>
+                ))}
               </div>
             </div>
           </div>
