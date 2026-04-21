@@ -201,18 +201,20 @@ html {
 }
 
 .marquee-track {
-  display: flex;
-  min-width: 100%;
+  display: block;
+  width: 100%;
   white-space: nowrap;
+  overflow: hidden;
 }
 
 .marquee-content {
   display: inline-flex;
-  min-width: 100%;
+  width: max-content;
   animation: market-marquee 24s linear infinite;
+  will-change: transform;
 }
 
 @keyframes market-marquee {
-  from { transform: translateX(0); }
-  to { transform: translateX(-100%); }
+  from { transform: translateX(0%); }
+  to { transform: translateX(-50%); }
 }
