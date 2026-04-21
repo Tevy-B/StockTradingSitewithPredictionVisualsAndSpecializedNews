@@ -32,13 +32,16 @@ const chartRanges = [
   { label: '1Y', days: 365 },
 ];
 
+const formatMoney = (value: number) => Number.isFinite(value) ? value.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 2 }) : 'N/A';
+
 const CustomChartTooltip = ({ active, payload }: any) => {
   if (active && payload && payload.length) {
     const point = payload[0].payload;
     return (
-      <div className="bg-card border border-border rounded-lg p-2.5 shadow-lg text-xs">
-        <p className="font-semibold text-foreground">Close ${point.close.toFixed(2)}</p>
-        <p className="text-muted-foreground">Open ${point.open.toFixed(2)} · High ${point.high.toFixed(2)} · Low ${point.low.toFixed(2)}</p>
+      <div className="bg-card border border-border rounded-lg p-3 shadow-lg text-xs min-w-52">
+        <p className="font-semibold text-foreground">{point.label || 'Price point'}</p>
+        <p className="text-muted-foreground mt-1">Close {formatMoney(point.close)}</p>
+        <p className="text-muted-foreground">Open {formatMoney(point.open)} · High {formatMoney(point.high)} · Low {formatMoney(point.low)}</p>
       </div>
     );
   }
@@ -64,7 +67,11 @@ export function StockDetail({ stock, onBack }: StockDetailProps) {
   const predictionColor = getPredictionColor(stock.prediction);
   const detail = liveDetail ?? stockDetailsMap[stock.symbol];
 
-  const series = useMemo(() => chartData.map((point, index) => ({ ...point, index: index + 1 })), [chartData]);
+  const series = useMemo(() => chartData.map((point, index) => ({
+    ...point,
+    index: index + 1,
+    label: new Date(point.time * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' }),
+  })), [chartData]);
   const chartMin = series.length ? Math.min(...series.map(d => d.close)) * 0.98 : stock.price * 0.95;
   const chartMax = series.length ? Math.max(...series.map(d => d.close)) * 1.02 : stock.price * 1.05;
   const chartStart = series[0]?.close ?? stock.price;
@@ -89,7 +96,7 @@ export function StockDetail({ stock, onBack }: StockDetailProps) {
                 {stock.exchange && <Badge variant="outline">{stock.exchange}</Badge>}
                 {analystConsensus && <span className={`text-xs font-semibold px-2 py-0.5 rounded border ${analystColor}`}>Analyst: {analystConsensus.consensus}</span>}
               </div>
-              <p className="text-muted-foreground text-sm">{stock.name}</p>
+              <p className="text-muted-foreground text-sm">{detail?.profile?.name || stock.name}</p>
               <div className="text-xs mt-1 flex gap-3 flex-wrap">
                 <a href={`https://finance.yahoo.com/quote/${stock.symbol}`} target="_blank" rel="noreferrer" className="underline inline-flex items-center gap-1">Yahoo Finance <ExternalLink className="h-3 w-3" /></a>
                 <a href={`https://www.google.com/finance/quote/${stock.symbol}:${stock.exchange?.includes('NASDAQ') ? 'NASDAQ' : 'NYSE'}`} target="_blank" rel="noreferrer" className="underline inline-flex items-center gap-1">Google Finance <ExternalLink className="h-3 w-3" /></a>
@@ -122,7 +129,10 @@ export function StockDetail({ stock, onBack }: StockDetailProps) {
             <CardContent className="space-y-2 text-sm">
               <div className="flex items-center gap-2"><Building2 className="h-4 w-4 text-muted-foreground" /> Industry: {detail?.profile?.industry || 'N/A'}</div>
               <div className="flex items-center gap-2"><Globe className="h-4 w-4 text-muted-foreground" /> Country: {detail?.profile?.country || 'N/A'}</div>
+              <div>Ticker: {detail?.profile?.symbol || stock.symbol} {detail?.profile?.exchange ? `(${detail.profile.exchange})` : ''}</div>
               <div>IPO: {detail?.profile?.ipo || 'N/A'}</div>
+              <div>Market cap: {detail?.profile?.marketCap ? detail.profile.marketCap.toLocaleString('en-US', { style: 'currency', currency: 'USD', notation: 'compact', maximumFractionDigits: 1 }) : 'N/A'}</div>
+              <div>Trading currency: {detail?.profile?.currency || 'N/A'}</div>
               {detail?.profile?.website && <a href={detail.profile.website} target="_blank" rel="noreferrer" className="underline">Official website</a>}
               {detail?.sourceMeta && <p className="text-xs text-muted-foreground">Source: {detail.sourceMeta.provider} · fetched {new Date(detail.sourceMeta.fetchedAt).toLocaleString()}</p>}
             </CardContent>
@@ -154,7 +164,7 @@ export function StockDetail({ stock, onBack }: StockDetailProps) {
               </CardHeader>
               <CardContent>
                 <ResponsiveContainer width="100%" height={320}>
-                  <AreaChart data={series}><CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" /><XAxis dataKey="index" tick={{ fontSize: 10 }} /><YAxis domain={[chartMin, chartMax]} tick={{ fontSize: 10 }} width={62} /><RechartsTooltip content={<CustomChartTooltip />} /><ReferenceLine y={chartStart} strokeDasharray="4 4" /><Area type="monotone" dataKey="close" stroke={chartIsUp ? '#22c55e' : '#ef4444'} strokeWidth={2} dot={false} /></AreaChart>
+                  <AreaChart data={series}><CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" /><XAxis dataKey="label" minTickGap={24} tick={{ fontSize: 10 }} /><YAxis domain={[chartMin, chartMax]} tickFormatter={(value) => `$${Number(value).toFixed(0)}`} tick={{ fontSize: 10 }} width={62} /><RechartsTooltip content={<CustomChartTooltip />} /><ReferenceLine y={chartStart} strokeDasharray="4 4" /><Area type="monotone" dataKey="close" stroke={chartIsUp ? '#22c55e' : '#ef4444'} strokeWidth={2} dot={false} /></AreaChart>
                 </ResponsiveContainer>
                 {series.length === 0 && <p className="text-xs text-muted-foreground mt-2">No chart points returned for this range.</p>}
               </CardContent>

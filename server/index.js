@@ -142,7 +142,7 @@ const finnhubFetch = async (apiPath, params = {}, options = {}) => {
 };
 
 const yahooFetchQuoteSummary = async (symbol) => {
-  const modules = 'summaryProfile,defaultKeyStatistics,financialData,price';
+  const modules = 'summaryProfile,defaultKeyStatistics,financialData,price,assetProfile';
   const response = await fetch(`https://query1.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(symbol)}?modules=${modules}`);
   if (!response.ok) throw new Error(`Yahoo quoteSummary failed: ${response.status}`);
   const payload = await response.json();
@@ -255,6 +255,7 @@ const buildStockDetail = async (symbol, stockSnapshot) => {
       const yahooData = await yahooFetchQuoteSummary(symbol);
       const financialData = yahooData?.financialData || {};
       const summaryProfile = yahooData?.summaryProfile || {};
+      const assetProfile = yahooData?.assetProfile || {};
       const keyStats = yahooData?.defaultKeyStatistics || {};
 
       if (missingFinancials) {
@@ -277,9 +278,9 @@ const buildStockDetail = async (symbol, stockSnapshot) => {
         lowTarget = safeNumber(financialData?.targetLowPrice?.raw, averagePriceTarget);
       }
 
-      if (!profile?.finnhubIndustry && summaryProfile?.industry) profile.finnhubIndustry = summaryProfile.industry;
-      if (!profile?.country && summaryProfile?.country) profile.country = summaryProfile.country;
-      if (!profile?.weburl && summaryProfile?.website) profile.weburl = summaryProfile.website;
+      if (!profile?.finnhubIndustry && (summaryProfile?.industry || assetProfile?.industry)) profile.finnhubIndustry = summaryProfile?.industry || assetProfile?.industry;
+      if (!profile?.country && (summaryProfile?.country || assetProfile?.country)) profile.country = summaryProfile?.country || assetProfile?.country;
+      if (!profile?.weburl && (summaryProfile?.website || assetProfile?.website)) profile.weburl = summaryProfile?.website || assetProfile?.website;
       if (!metricResponse?.metric?.beta && keyStats?.beta?.raw) metricResponse.metric = { ...(metricResponse.metric || {}), beta: keyStats.beta.raw };
       sourceProvider = 'Finnhub + Yahoo Finance';
     } catch {
@@ -305,12 +306,16 @@ const buildStockDetail = async (symbol, stockSnapshot) => {
       ratings: [],
     },
     profile: {
+      symbol,
+      name: profile?.name || stockSnapshot?.name || symbol,
       exchange: normalizeExchange(profile?.exchange),
       industry: profile?.finnhubIndustry || '',
       country: profile?.country || '',
+      currency: profile?.currency || '',
       ipo: profile?.ipo || '',
       website: profile?.weburl || '',
       logo: profile?.logo || '',
+      marketCap: safeNumber(profile?.marketCapitalization, 0) * 1_000_000,
     },
     sourceMeta: {
       provider: sourceProvider,
@@ -480,18 +485,23 @@ createServer(async (req, res) => {
       const days = Number.isFinite(range) ? Math.max(7, Math.min(365, range)) : 90;
       const to = Math.floor(Date.now() / 1000);
       const from = to - (days * 24 * 60 * 60);
-      const data = await finnhubFetch('stock/candle', { symbol, resolution: 'D', from: String(from), to: String(to) }, { ttlMs: 1000 * 60 * 30 });
-
-      let points = (data.t || []).map((timestamp, idx) => ({
-        time: timestamp,
-        open: safeNumber(data.o?.[idx]),
-        high: safeNumber(data.h?.[idx]),
-        low: safeNumber(data.l?.[idx]),
-        close: safeNumber(data.c?.[idx]),
-        volume: safeNumber(data.v?.[idx]),
-      })).filter((point) => point.close > 0);
-
+      let points = [];
       let source = 'Finnhub';
+
+      try {
+        const data = await finnhubFetch('stock/candle', { symbol, resolution: 'D', from: String(from), to: String(to) }, { ttlMs: 1000 * 60 * 30 });
+        points = (data?.t || []).map((timestamp, idx) => ({
+          time: timestamp,
+          open: safeNumber(data.o?.[idx]),
+          high: safeNumber(data.h?.[idx]),
+          low: safeNumber(data.l?.[idx]),
+          close: safeNumber(data.c?.[idx]),
+          volume: safeNumber(data.v?.[idx]),
+        })).filter((point) => point.close > 0);
+      } catch {
+        points = [];
+      }
+
       if (points.length === 0) {
         try {
           points = await yahooFetchChart(symbol, days);
