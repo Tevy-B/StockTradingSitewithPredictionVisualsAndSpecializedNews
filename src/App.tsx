@@ -1,11 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { DollarSign, Activity, Info, ShieldCheck, ExternalLink, Sparkles, Gem, Rocket, BarChart4, Shield, Landmark, LockKeyhole, Globe2 } from 'lucide-react';
+import { DollarSign, Activity, Info, ShieldCheck, ExternalLink, Sparkles, Gem, Rocket, BarChart4, Shield } from 'lucide-react';
 import { StockCard } from './components/StockCard';
 import { StockDetail } from './components/StockDetail';
 import { MarketSummary } from './components/MarketSummary';
 import { Badge } from './components/ui/badge';
 import { Tooltip, TooltipContent, TooltipTrigger } from './components/ui/tooltip';
-import { Input } from './components/ui/input';
 import { Button } from './components/ui/button';
 import { filterStocks, Stock } from './utils/stockUtils';
 import {
@@ -21,11 +20,19 @@ import {
   getStoredToken,
 } from './services/api';
 import { StockSearch, StockSuggestion } from './components/StockSearch';
+import { LoginPage } from './components/LoginPage';
+import { AboutPage } from './components/AboutPage';
 
 const LAST_EMAIL_KEY = 'stockpredict_last_email';
 const REMEMBERED_EMAILS_KEY = 'stockpredict_remembered_emails';
+const LAST_LOGIN_CRED_KEY = 'stockpredict_last_login_cred';
 const getLocalPortfolioKey = (email: string) => `stockpredict_portfolio_${email.toLowerCase()}`;
-const getStockSymbolFromUrl = () => new URL(window.location.href).searchParams.get('stock')?.toUpperCase() || '';
+const readRoute = () => {
+  const url = new URL(window.location.href);
+  const page = (url.searchParams.get('page') || 'dashboard') as 'dashboard' | 'about';
+  const stock = url.searchParams.get('stock')?.toUpperCase() || '';
+  return { page: page === 'about' ? 'about' : 'dashboard', stock };
+};
 
 export default function App() {
   const [stocks, setStocks] = useState<Stock[]>([]);
@@ -51,7 +58,8 @@ export default function App() {
       return [];
     }
   });
-  const [currentPage, setCurrentPage] = useState<'dashboard' | 'about'>('dashboard');
+  const initialRoute = readRoute();
+  const [currentPage, setCurrentPage] = useState<'dashboard' | 'about'>(initialRoute.page);
 
   const marketSummary = useMemo(() => {
     const totalValue = stocks.reduce((sum, stock) => sum + stock.price, 0);
@@ -59,6 +67,15 @@ export default function App() {
     const dailyChangePercent = totalValue ? (dailyChange / Math.max(totalValue - dailyChange, 1)) * 100 : 0;
     return { totalValue, dailyChange, dailyChangePercent };
   }, [stocks]);
+
+  const pushRoute = (page: 'dashboard' | 'about', stock?: string) => {
+    const url = new URL(window.location.href);
+    url.searchParams.set('page', page);
+    if (stock) url.searchParams.set('stock', stock);
+    else url.searchParams.delete('stock');
+    window.history.pushState({ page, stock }, '', url.toString());
+    setCurrentPage(page);
+  };
 
   const refreshStocks = async (symbols: string[]) => {
     if (!symbols.length) {
@@ -186,19 +203,14 @@ export default function App() {
   const featuredTape = (stocks.length ? stocks : []).slice(0, 8);
 
   const openStockDetail = (stock: Stock) => {
+    setCurrentPage('dashboard');
     setSelectedStock(stock);
-    const url = new URL(window.location.href);
-    url.searchParams.set('stock', stock.symbol);
-    window.history.pushState({ stock: stock.symbol }, '', url.toString());
+    pushRoute('dashboard', stock.symbol);
   };
 
   const closeStockDetail = () => {
-    const url = new URL(window.location.href);
-    if (!url.searchParams.get('stock')) {
-      setSelectedStock(null);
-      return;
-    }
-    window.history.back();
+    setSelectedStock(null);
+    pushRoute(currentPage);
   };
 
   const handleAuth = async (mode: 'login' | 'register') => {
@@ -213,9 +225,11 @@ export default function App() {
         localStorage.setItem(LAST_EMAIL_KEY, payload.user.email);
         const merged = Array.from(new Set([payload.user.email, ...rememberedEmails])).slice(0, 6);
         localStorage.setItem(REMEMBERED_EMAILS_KEY, JSON.stringify(merged));
+        localStorage.setItem(LAST_LOGIN_CRED_KEY, JSON.stringify({ email: payload.user.email, password: loginPassword }));
         setRememberedEmails(merged);
       } else {
         localStorage.removeItem(LAST_EMAIL_KEY);
+        localStorage.removeItem(LAST_LOGIN_CRED_KEY);
       }
       const symbols = await getPortfolio();
       let localSymbols: string[] = [];
@@ -243,10 +257,11 @@ export default function App() {
   };
 
   useEffect(() => {
-    if (!userEmail) return;
-
     const syncFromLocation = () => {
-      const symbol = getStockSymbolFromUrl();
+      const route = readRoute();
+      setCurrentPage(route.page);
+      if (!userEmail) return;
+      const symbol = route.stock;
       if (!symbol) {
         setSelectedStock(null);
         return;
@@ -277,51 +292,34 @@ export default function App() {
     return () => window.removeEventListener('popstate', syncFromLocation);
   }, [userEmail, stocks]);
 
+  useEffect(() => {
+    if (userEmail || !rememberMe || loginPassword) return;
+    try {
+      const raw = localStorage.getItem(LAST_LOGIN_CRED_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (parsed?.email && parsed?.password) {
+        setLoginEmail(parsed.email);
+        setLoginPassword(parsed.password);
+      }
+    } catch {
+      // ignore invalid payload
+    }
+  }, [userEmail, rememberMe, loginPassword]);
+
   if (!userEmail) {
-    return (
-      <div className="min-h-screen grid place-items-center p-4 bg-gradient-to-br from-slate-950 via-slate-900 to-indigo-950 relative overflow-hidden">
-        <div className="absolute top-12 left-10 w-52 h-52 rounded-full bg-fuchsia-500/20 blur-3xl animate-pulse" />
-        <div className="absolute bottom-8 right-8 w-60 h-60 rounded-full bg-cyan-500/20 blur-3xl animate-pulse" />
-        <div className="w-full max-w-md border border-white/20 rounded-2xl p-6 bg-slate-900/70 backdrop-blur-xl space-y-4 shadow-2xl text-white relative z-10">
-          <div className="absolute -right-6 -top-6 w-24 h-24 rounded-full border border-white/20 bg-white/10 float-slow" />
-          <div className="flex items-center gap-2">
-            <LockKeyhole className="h-5 w-5 text-emerald-300" />
-            <h1 className="text-xl font-semibold">Welcome to StockPredict Pro</h1>
-          </div>
-          <p className="text-sm text-slate-300">Secure, transparent, and real-time portfolio intelligence.</p>
-          <Input placeholder="Email" autoComplete="email" value={loginEmail} onChange={(e) => setLoginEmail(e.target.value)} className="bg-white/90 text-black" />
-          {rememberedEmails.length > 0 && (
-            <div className="flex flex-wrap gap-1 -mt-2">
-              {rememberedEmails.map((savedEmail) => (
-                <button key={savedEmail} type="button" onClick={() => setLoginEmail(savedEmail)} className="text-[11px] px-2 py-0.5 rounded-full bg-white/10 hover:bg-white/20">
-                  {savedEmail}
-                </button>
-              ))}
-            </div>
-          )}
-          <Input type="password" autoComplete="current-password" placeholder="Password" value={loginPassword} onChange={(e) => setLoginPassword(e.target.value)} className="bg-white/90 text-black" />
-          {error && <p className="text-sm text-rose-300">{error}</p>}
-          <label className="text-xs flex items-center gap-2 text-slate-300">
-            <input type="checkbox" checked={rememberMe} onChange={(e) => setRememberMe(e.target.checked)} />
-            Remember my email on this device
-          </label>
-          <div className="flex gap-2">
-            <Button onClick={() => handleAuth('login')} className="bg-emerald-600 hover:bg-emerald-500 text-white">Login</Button>
-            <Button variant="outline" onClick={() => handleAuth('register')} className="border-white/40 text-white hover:bg-white/10">Register</Button>
-          </div>
-          <div className="grid grid-cols-3 gap-2 text-[11px] text-slate-200">
-            <span className="rounded-md bg-white/10 px-2 py-1">Live data</span>
-            <span className="rounded-md bg-white/10 px-2 py-1">AI insights</span>
-            <span className="rounded-md bg-white/10 px-2 py-1">Secure login</span>
-          </div>
-          <div className="rounded-lg border border-white/20 bg-white/5 px-3 py-2 shimmer text-xs text-slate-200">
-            <p className="font-medium">Market Pulse</p>
-            <p className="opacity-90 mt-1">Track real-time symbols, trusted sources, and explainable predictions in one premium workspace.</p>
-          </div>
-          <p className="text-xs text-slate-300">Your ticker dashboard is saved per account on the backend store.</p>
-        </div>
-      </div>
-    );
+    return <LoginPage
+      loginEmail={loginEmail}
+      loginPassword={loginPassword}
+      rememberMe={rememberMe}
+      rememberedEmails={rememberedEmails}
+      error={error}
+      onEmailChange={setLoginEmail}
+      onPasswordChange={setLoginPassword}
+      onRememberChange={setRememberMe}
+      onLogin={() => handleAuth('login')}
+      onRegister={() => handleAuth('register')}
+    />;
   }
 
   if (selectedStock) {
@@ -343,7 +341,7 @@ export default function App() {
                 <Activity className="h-4 w-4 animate-pulse text-green-500" />
                 Live Market
               </Badge>
-              <Button variant={currentPage === 'about' ? 'default' : 'outline'} size="sm" onClick={() => setCurrentPage(currentPage === 'about' ? 'dashboard' : 'about')}>
+              <Button variant={currentPage === 'about' ? 'default' : 'outline'} size="sm" onClick={() => pushRoute(currentPage === 'about' ? 'dashboard' : 'about')}>
                 {currentPage === 'about' ? 'Dashboard' : 'About'}
               </Button>
               <Button variant="outline" size="sm" onClick={() => { clearStoredToken(); setLoginEmail(userEmail); setUserEmail(''); }}>Logout</Button>
@@ -355,19 +353,7 @@ export default function App() {
 
       <div className="container mx-auto px-4 py-6">
         {currentPage === 'about' ? (
-          <section className="rounded-2xl border bg-card p-6 sm:p-8 shadow-sm space-y-4">
-            <Badge className="w-fit"><Landmark className="h-3 w-3 mr-1" /> About StockPredict</Badge>
-            <h2 className="text-2xl sm:text-3xl font-bold">A luxurious, transparent financial intelligence workspace.</h2>
-            <p className="text-muted-foreground">
-              StockPredict combines live market feeds, explainable prediction logic, and trusted source references into one premium interface.
-              Designed for usability on desktop and mobile, it helps you monitor, compare, and investigate stocks with confidence.
-            </p>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
-              <div className="rounded-xl border p-4"><p className="font-semibold mb-1 flex items-center gap-1"><Rocket className="h-4 w-4" /> Performance</p><p className="text-muted-foreground">Fast cached endpoints and weekend snapshots reduce delays and API stress.</p></div>
-              <div className="rounded-xl border p-4"><p className="font-semibold mb-1 flex items-center gap-1"><Shield className="h-4 w-4" /> Trust</p><p className="text-muted-foreground">Server-side keys, source transparency, and external verification links.</p></div>
-              <div className="rounded-xl border p-4"><p className="font-semibold mb-1 flex items-center gap-1"><Globe2 className="h-4 w-4" /> Coverage</p><p className="text-muted-foreground">Works across many tickers with fallback market data support.</p></div>
-            </div>
-          </section>
+          <AboutPage />
         ) : (
           <>
         <section className="lux-grid-bg relative overflow-hidden rounded-2xl border border-primary/20 bg-gradient-to-r from-slate-950 via-slate-900 to-indigo-950 text-white p-5 sm:p-8 mb-6">
