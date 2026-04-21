@@ -24,6 +24,7 @@ import { StockSearch, StockSuggestion } from './components/StockSearch';
 
 const LAST_EMAIL_KEY = 'stockpredict_last_email';
 const getLocalPortfolioKey = (email: string) => `stockpredict_portfolio_${email.toLowerCase()}`;
+const getStockSymbolFromUrl = () => new URL(window.location.href).searchParams.get('stock')?.toUpperCase() || '';
 
 export default function App() {
   const [stocks, setStocks] = useState<Stock[]>([]);
@@ -164,6 +165,22 @@ export default function App() {
   const filteredStocks = filterStocks(stocks, searchTerm);
   const featuredTape = (stocks.length ? stocks : []).slice(0, 8);
 
+  const openStockDetail = (stock: Stock) => {
+    setSelectedStock(stock);
+    const url = new URL(window.location.href);
+    url.searchParams.set('stock', stock.symbol);
+    window.history.pushState({ stock: stock.symbol }, '', url.toString());
+  };
+
+  const closeStockDetail = () => {
+    const url = new URL(window.location.href);
+    if (!url.searchParams.get('stock')) {
+      setSelectedStock(null);
+      return;
+    }
+    window.history.back();
+  };
+
   const handleAuth = async (mode: 'login' | 'register') => {
     try {
       setError('');
@@ -198,6 +215,41 @@ export default function App() {
     }
   };
 
+  useEffect(() => {
+    if (!userEmail) return;
+
+    const syncFromLocation = () => {
+      const symbol = getStockSymbolFromUrl();
+      if (!symbol) {
+        setSelectedStock(null);
+        return;
+      }
+
+      const located = stocks.find((item) => item.symbol === symbol);
+      if (located) {
+        setSelectedStock(located);
+        return;
+      }
+
+      setSelectedStock({
+        symbol,
+        name: symbol,
+        exchange: '',
+        price: 0,
+        change: 0,
+        changePercent: 0,
+        prediction: 50,
+        volume: 'N/A',
+        marketCap: 'N/A',
+        pe: 0,
+      });
+    };
+
+    syncFromLocation();
+    window.addEventListener('popstate', syncFromLocation);
+    return () => window.removeEventListener('popstate', syncFromLocation);
+  }, [userEmail, stocks]);
+
   if (!userEmail) {
     return (
       <div className="min-h-screen grid place-items-center p-4 bg-gradient-to-b from-background via-background to-primary/10">
@@ -218,7 +270,7 @@ export default function App() {
 
   if (selectedStock) {
     const latest = stocks.find((stock) => stock.symbol === selectedStock.symbol) || selectedStock;
-    return <StockDetail stock={latest} onBack={() => setSelectedStock(null)} />;
+    return <StockDetail stock={latest} onBack={closeStockDetail} />;
   }
 
   return (
@@ -363,7 +415,7 @@ export default function App() {
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {filteredStocks.map((stock) => (
-            <StockCard key={stock.symbol} stock={stock} onClick={() => setSelectedStock(stock)} />
+            <StockCard key={stock.symbol} stock={stock} onClick={() => openStockDetail(stock)} />
           ))}
         </div>
       </div>
