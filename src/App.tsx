@@ -23,6 +23,7 @@ import {
 import { StockSearch, StockSuggestion } from './components/StockSearch';
 
 const LAST_EMAIL_KEY = 'stockpredict_last_email';
+const REMEMBERED_EMAILS_KEY = 'stockpredict_remembered_emails';
 const getLocalPortfolioKey = (email: string) => `stockpredict_portfolio_${email.toLowerCase()}`;
 const getStockSymbolFromUrl = () => new URL(window.location.href).searchParams.get('stock')?.toUpperCase() || '';
 
@@ -41,6 +42,15 @@ export default function App() {
   const [userEmail, setUserEmail] = useState('');
   const [loginEmail, setLoginEmail] = useState(() => localStorage.getItem(LAST_EMAIL_KEY) || '');
   const [loginPassword, setLoginPassword] = useState('');
+  const [rememberMe, setRememberMe] = useState(true);
+  const [rememberedEmails, setRememberedEmails] = useState<string[]>(() => {
+    try {
+      const parsed = JSON.parse(localStorage.getItem(REMEMBERED_EMAILS_KEY) || '[]');
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  });
   const [currentPage, setCurrentPage] = useState<'dashboard' | 'about'>('dashboard');
 
   const marketSummary = useMemo(() => {
@@ -90,8 +100,11 @@ export default function App() {
 
       setPortfolioSymbols(mergedSymbols);
       await refreshStocks(mergedSymbols);
-    } catch {
-      clearStoredToken();
+    } catch (bootstrapError) {
+      const message = bootstrapError instanceof Error ? bootstrapError.message : '';
+      if (message.toLowerCase().includes('unauthorized')) {
+        clearStoredToken();
+      }
       setUserEmail('');
     } finally {
       setIsLoading(false);
@@ -109,8 +122,14 @@ export default function App() {
   }, [userEmail]);
 
   useEffect(() => {
+    if (!rememberMe) return;
     localStorage.setItem(LAST_EMAIL_KEY, loginEmail.trim().toLowerCase());
-  }, [loginEmail]);
+  }, [loginEmail, rememberMe]);
+
+  useEffect(() => {
+    if (rememberMe) return;
+    localStorage.removeItem(LAST_EMAIL_KEY);
+  }, [rememberMe]);
 
   useEffect(() => {
     if (!userEmail || portfolioSymbols.length === 0) return;
@@ -190,7 +209,14 @@ export default function App() {
         : await register(loginEmail, loginPassword);
       setStoredToken(payload.token);
       setUserEmail(payload.user.email);
-      localStorage.setItem(LAST_EMAIL_KEY, payload.user.email);
+      if (rememberMe) {
+        localStorage.setItem(LAST_EMAIL_KEY, payload.user.email);
+        const merged = Array.from(new Set([payload.user.email, ...rememberedEmails])).slice(0, 6);
+        localStorage.setItem(REMEMBERED_EMAILS_KEY, JSON.stringify(merged));
+        setRememberedEmails(merged);
+      } else {
+        localStorage.removeItem(LAST_EMAIL_KEY);
+      }
       const symbols = await getPortfolio();
       let localSymbols: string[] = [];
       try {
@@ -257,14 +283,28 @@ export default function App() {
         <div className="absolute top-12 left-10 w-52 h-52 rounded-full bg-fuchsia-500/20 blur-3xl animate-pulse" />
         <div className="absolute bottom-8 right-8 w-60 h-60 rounded-full bg-cyan-500/20 blur-3xl animate-pulse" />
         <div className="w-full max-w-md border border-white/20 rounded-2xl p-6 bg-slate-900/70 backdrop-blur-xl space-y-4 shadow-2xl text-white relative z-10">
+          <div className="absolute -right-6 -top-6 w-24 h-24 rounded-full border border-white/20 bg-white/10 float-slow" />
           <div className="flex items-center gap-2">
             <LockKeyhole className="h-5 w-5 text-emerald-300" />
             <h1 className="text-xl font-semibold">Welcome to StockPredict Pro</h1>
           </div>
           <p className="text-sm text-slate-300">Secure, transparent, and real-time portfolio intelligence.</p>
-          <Input placeholder="Email" value={loginEmail} onChange={(e) => setLoginEmail(e.target.value)} className="bg-white/90 text-black" />
-          <Input type="password" placeholder="Password" value={loginPassword} onChange={(e) => setLoginPassword(e.target.value)} className="bg-white/90 text-black" />
+          <Input placeholder="Email" autoComplete="email" value={loginEmail} onChange={(e) => setLoginEmail(e.target.value)} className="bg-white/90 text-black" />
+          {rememberedEmails.length > 0 && (
+            <div className="flex flex-wrap gap-1 -mt-2">
+              {rememberedEmails.map((savedEmail) => (
+                <button key={savedEmail} type="button" onClick={() => setLoginEmail(savedEmail)} className="text-[11px] px-2 py-0.5 rounded-full bg-white/10 hover:bg-white/20">
+                  {savedEmail}
+                </button>
+              ))}
+            </div>
+          )}
+          <Input type="password" autoComplete="current-password" placeholder="Password" value={loginPassword} onChange={(e) => setLoginPassword(e.target.value)} className="bg-white/90 text-black" />
           {error && <p className="text-sm text-rose-300">{error}</p>}
+          <label className="text-xs flex items-center gap-2 text-slate-300">
+            <input type="checkbox" checked={rememberMe} onChange={(e) => setRememberMe(e.target.checked)} />
+            Remember my email on this device
+          </label>
           <div className="flex gap-2">
             <Button onClick={() => handleAuth('login')} className="bg-emerald-600 hover:bg-emerald-500 text-white">Login</Button>
             <Button variant="outline" onClick={() => handleAuth('register')} className="border-white/40 text-white hover:bg-white/10">Register</Button>
@@ -273,6 +313,10 @@ export default function App() {
             <span className="rounded-md bg-white/10 px-2 py-1">Live data</span>
             <span className="rounded-md bg-white/10 px-2 py-1">AI insights</span>
             <span className="rounded-md bg-white/10 px-2 py-1">Secure login</span>
+          </div>
+          <div className="rounded-lg border border-white/20 bg-white/5 px-3 py-2 shimmer text-xs text-slate-200">
+            <p className="font-medium">Market Pulse</p>
+            <p className="opacity-90 mt-1">Track real-time symbols, trusted sources, and explainable predictions in one premium workspace.</p>
           </div>
           <p className="text-xs text-slate-300">Your ticker dashboard is saved per account on the backend store.</p>
         </div>
