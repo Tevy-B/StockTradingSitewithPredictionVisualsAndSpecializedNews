@@ -1,6 +1,7 @@
 export interface Stock {
   symbol: string;
   name: string;
+  exchange?: string;
   price: number;
   change: number;
   changePercent: number;
@@ -50,6 +51,19 @@ export interface StockExtendedDetail {
     quarterly: BalanceSheetEntry[];
   };
   analystConsensus: AnalystConsensus;
+
+  profile?: {
+    exchange?: string;
+    industry?: string;
+    country?: string;
+    ipo?: string;
+    website?: string;
+    logo?: string;
+  };
+  sourceMeta?: {
+    provider: string;
+    fetchedAt: string;
+  };
 }
 
 export const getPredictionLabel = (prediction: number): string => {
