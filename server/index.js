@@ -263,12 +263,13 @@ const mapReportToEntry = (reportItem) => {
 };
 
 const buildStockDetail = async (symbol, stockSnapshot) => {
-  const [metricResponse, financials, recommendations, priceTarget, profile] = await Promise.all([
+  const [metricResponse, financials, recommendations, priceTarget, profile, yahooQuote] = await Promise.all([
     finnhubFetch('stock/metric', { symbol, metric: 'all' }, { ttlMs: 1000 * 60 * 60 * 6 }),
     finnhubFetch('stock/financials-reported', { symbol }, { ttlMs: 1000 * 60 * 60 * 12 }),
     finnhubFetch('stock/recommendation', { symbol }, { ttlMs: 1000 * 60 * 60 * 6 }),
     finnhubFetch('stock/price-target', { symbol }, { ttlMs: 1000 * 60 * 60 * 6 }),
     finnhubFetch('stock/profile2', { symbol }, { ttlMs: 1000 * 60 * 60 * 12 }),
+    yahooFetchQuote(symbol).catch(() => null),
   ]);
 
   const reports = Array.isArray(financials?.data) ? financials.data : [];
@@ -324,12 +325,26 @@ const buildStockDetail = async (symbol, stockSnapshot) => {
     }
   }
 
+  if (!profile?.finnhubIndustry || !profile?.country || !profile?.weburl) {
+    try {
+      const yahooData = await yahooFetchQuoteSummary(symbol);
+      const summaryProfile = yahooData?.summaryProfile || {};
+      const assetProfile = yahooData?.assetProfile || {};
+      if (!profile?.finnhubIndustry) profile.finnhubIndustry = summaryProfile?.industry || assetProfile?.industry || '';
+      if (!profile?.country) profile.country = summaryProfile?.country || assetProfile?.country || '';
+      if (!profile?.weburl) profile.weburl = summaryProfile?.website || assetProfile?.website || '';
+      if (sourceProvider === 'Finnhub') sourceProvider = 'Finnhub + Yahoo Finance';
+    } catch {
+      // keep existing profile data
+    }
+  }
+
   return {
     beta: safeNumber(metricResponse?.metric?.beta, 1),
     eps: safeNumber(metricResponse?.metric?.epsTTM || metricResponse?.metric?.epsNormalizedAnnual, 0),
     dividend: safeNumber(metricResponse?.metric?.dividendPerShareAnnual, 0),
-    high52w: safeNumber(metricResponse?.metric?.['52WeekHigh'], stockSnapshot?.price || 0),
-    low52w: safeNumber(metricResponse?.metric?.['52WeekLow'], stockSnapshot?.price || 0),
+    high52w: safeNumber(metricResponse?.metric?.['52WeekHigh'], safeNumber(yahooQuote?.fiftyTwoWeekHigh, stockSnapshot?.price || 0)),
+    low52w: safeNumber(metricResponse?.metric?.['52WeekLow'], safeNumber(yahooQuote?.fiftyTwoWeekLow, stockSnapshot?.price || 0)),
     balanceSheet: { annual, quarterly },
     analystConsensus: {
       consensus: derivedConsensus.consensus,
@@ -343,15 +358,15 @@ const buildStockDetail = async (symbol, stockSnapshot) => {
     },
     profile: {
       symbol,
-      name: profile?.name || stockSnapshot?.name || symbol,
-      exchange: normalizeExchange(profile?.exchange),
+      name: profile?.name || yahooQuote?.longName || yahooQuote?.shortName || stockSnapshot?.name || symbol,
+      exchange: normalizeExchange(profile?.exchange || yahooQuote?.fullExchangeName || yahooQuote?.exchange),
       industry: profile?.finnhubIndustry || '',
       country: profile?.country || '',
-      currency: profile?.currency || '',
+      currency: profile?.currency || yahooQuote?.currency || '',
       ipo: profile?.ipo || '',
       website: profile?.weburl || '',
       logo: profile?.logo || '',
-      marketCap: safeNumber(profile?.marketCapitalization, 0) * 1_000_000,
+      marketCap: safeNumber(profile?.marketCapitalization, 0) * 1_000_000 || safeNumber(yahooQuote?.marketCap, 0),
     },
     sourceMeta: {
       provider: sourceProvider,
@@ -393,18 +408,7 @@ const getStocksForUser = async (symbols) => {
       if (cached?.stock) {
         stocks.push(cached.stock);
       } else {
-        stocks.push({
-          symbol,
-          name: symbol,
-          exchange: '',
-          price: 0,
-          change: 0,
-          changePercent: 0,
-          prediction: 50,
-          volume: 'N/A',
-          marketCap: 'N/A',
-          pe: 0,
-        });
+        throw error;
       }
     }
   }

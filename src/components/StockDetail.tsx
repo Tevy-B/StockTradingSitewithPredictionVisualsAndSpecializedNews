@@ -17,7 +17,6 @@ import {
   Stock, getPredictionLabel, getPredictionColor,
   getAnalystConsensusColor, METRIC_TOOLTIPS, StockExtendedDetail
 } from '../utils/stockUtils';
-import { stockDetailsMap } from '../constants/mockData';
 import { getStockChart, getStockDetail, getStockNews, StockNewsItem } from '../services/api';
 
 interface StockDetailProps {
@@ -65,7 +64,7 @@ export function StockDetail({ stock, onBack }: StockDetailProps) {
 
   const predictionLabel = getPredictionLabel(stock.prediction);
   const predictionColor = getPredictionColor(stock.prediction);
-  const detail = liveDetail ?? stockDetailsMap[stock.symbol];
+  const detail = liveDetail;
 
   const series = useMemo(() => chartData.map((point, index) => ({
     ...point,
