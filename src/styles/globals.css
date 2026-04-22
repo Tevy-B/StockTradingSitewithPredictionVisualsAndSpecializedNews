@@ -248,8 +248,24 @@ html {
 .login-ambient .orb-1 { width: 120px; height: 120px; top: 8%; left: 8%; }
 .login-ambient .orb-2 { width: 160px; height: 160px; top: 30%; right: 12%; animation-delay: -4s; }
 .login-ambient .orb-3 { width: 90px; height: 90px; bottom: 14%; left: 22%; animation-delay: -8s; }
+.login-ambient .scan {
+  position: absolute;
+  height: 2px;
+  width: 70%;
+  left: 15%;
+  background: linear-gradient(90deg, transparent, rgba(99, 232, 255, 0.8), transparent);
+  animation: scan-shift 5s linear infinite;
+}
+.login-ambient .scan-1 { top: 22%; }
+.login-ambient .scan-2 { bottom: 24%; animation-delay: -2.2s; }
 
 @keyframes orb-drift {
   0%, 100% { transform: translateY(0px) translateX(0px); opacity: 0.35; }
   50% { transform: translateY(-14px) translateX(10px); opacity: 0.7; }
+}
+
+@keyframes scan-shift {
+  0% { transform: translateX(-18px); opacity: 0.2; }
+  50% { transform: translateX(18px); opacity: 0.9; }
+  100% { transform: translateX(-18px); opacity: 0.2; }
 }

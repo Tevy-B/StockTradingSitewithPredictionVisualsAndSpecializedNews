@@ -36,6 +36,8 @@ export function LoginPage({
         <span className="orbs orb-1" />
         <span className="orbs orb-2" />
         <span className="orbs orb-3" />
+        <span className="scan scan-1" />
+        <span className="scan scan-2" />
       </div>
       <div className="w-full max-w-md border border-white/20 rounded-2xl p-6 bg-slate-900/70 backdrop-blur-xl space-y-4 shadow-2xl text-white relative z-10">
         <div className="absolute -right-6 -top-6 w-24 h-24 rounded-full border border-white/20 bg-white/10 float-slow" />
@@ -62,7 +64,7 @@ export function LoginPage({
         </label>
         <div className="flex gap-2">
           <Button onClick={onLogin} className="bg-emerald-600 hover:bg-emerald-500 text-white">Login</Button>
-          <Button variant="outline" onClick={onRegister} className="border-white/40 text-white hover:bg-white/10">Register</Button>
+          <Button onClick={onRegister} className="bg-white text-slate-900 hover:bg-slate-100 border border-white/40">Register</Button>
         </div>
         <div className="rounded-lg border border-white/20 bg-white/5 px-3 py-2 shimmer text-xs text-slate-200">
           <p className="font-medium">Market Pulse</p>

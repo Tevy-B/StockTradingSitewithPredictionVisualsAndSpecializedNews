@@ -168,35 +168,71 @@ const yahooFetchChart = async (symbol, days) => {
   })).filter((point) => point.close > 0);
 };
 
+const yahooFetchQuote = async (symbol) => {
+  const response = await fetch(`https://query1.finance.yahoo.com/v7/finance/quote?symbols=${encodeURIComponent(symbol)}`);
+  if (!response.ok) throw new Error(`Yahoo quote failed: ${response.status}`);
+  const payload = await response.json();
+  return payload?.quoteResponse?.result?.[0] || null;
+};
+
+const yahooSearchSymbols = async (query) => {
+  const response = await fetch(`https://query1.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(query)}&quotesCount=12&newsCount=0`);
+  if (!response.ok) throw new Error(`Yahoo search failed: ${response.status}`);
+  const payload = await response.json();
+  return Array.isArray(payload?.quotes) ? payload.quotes : [];
+};
+
 const buildStock = async (symbol) => {
   const upperSymbol = symbol.toUpperCase();
-  const [quote, profile, metricResponse] = await Promise.all([
-    finnhubFetch('quote', { symbol: upperSymbol }, { ttlMs: 15000 }),
-    finnhubFetch('stock/profile2', { symbol: upperSymbol }, { ttlMs: 1000 * 60 * 60 * 12 }),
-    finnhubFetch('stock/metric', { symbol: upperSymbol, metric: 'all' }, { ttlMs: 1000 * 60 * 60 * 6 }),
-  ]);
+  try {
+    const [quote, profile, metricResponse] = await Promise.all([
+      finnhubFetch('quote', { symbol: upperSymbol }, { ttlMs: 15000 }),
+      finnhubFetch('stock/profile2', { symbol: upperSymbol }, { ttlMs: 1000 * 60 * 60 * 12 }),
+      finnhubFetch('stock/metric', { symbol: upperSymbol, metric: 'all' }, { ttlMs: 1000 * 60 * 60 * 6 }),
+    ]);
 
-  const currentPrice = safeNumber(quote.c);
-  if (!currentPrice) throw new Error(`No quote returned for ${upperSymbol}`);
+    const currentPrice = safeNumber(quote.c);
+    if (!currentPrice) throw new Error(`No quote returned for ${upperSymbol}`);
 
-  const previousClose = safeNumber(quote.pc, currentPrice);
-  const rawChange = safeNumber(quote.d, currentPrice - previousClose);
-  const changePercent = safeNumber(quote.dp, previousClose ? (rawChange / previousClose) * 100 : 0);
-  const pe = safeNumber(metricResponse?.metric?.peNormalizedAnnual || metricResponse?.metric?.peTTM, 0);
-  const marketCap = safeNumber(profile?.marketCapitalization, 0) * 1_000_000;
+    const previousClose = safeNumber(quote.pc, currentPrice);
+    const rawChange = safeNumber(quote.d, currentPrice - previousClose);
+    const changePercent = safeNumber(quote.dp, previousClose ? (rawChange / previousClose) * 100 : 0);
+    const pe = safeNumber(metricResponse?.metric?.peNormalizedAnnual || metricResponse?.metric?.peTTM, 0);
+    const marketCap = safeNumber(profile?.marketCapitalization, 0) * 1_000_000;
 
-  return {
-    symbol: upperSymbol,
-    name: profile?.name || upperSymbol,
-    exchange: normalizeExchange(profile?.exchange),
-    price: currentPrice,
-    change: rawChange,
-    changePercent,
-    prediction: calculatePrediction({ changePercent, pe }),
-    volume: compactNumber(safeNumber(quote.v, 0)),
-    marketCap: compactNumber(marketCap),
-    pe,
-  };
+    return {
+      symbol: upperSymbol,
+      name: profile?.name || upperSymbol,
+      exchange: normalizeExchange(profile?.exchange),
+      price: currentPrice,
+      change: rawChange,
+      changePercent,
+      prediction: calculatePrediction({ changePercent, pe }),
+      volume: compactNumber(safeNumber(quote.v, 0)),
+      marketCap: compactNumber(marketCap),
+      pe,
+    };
+  } catch {
+    const yahooQuote = await yahooFetchQuote(upperSymbol);
+    const currentPrice = safeNumber(yahooQuote?.regularMarketPrice);
+    if (!currentPrice) throw new Error(`No quote returned for ${upperSymbol}`);
+    const previousClose = safeNumber(yahooQuote?.regularMarketPreviousClose, currentPrice);
+    const rawChange = safeNumber(yahooQuote?.regularMarketChange, currentPrice - previousClose);
+    const changePercent = safeNumber(yahooQuote?.regularMarketChangePercent, previousClose ? (rawChange / previousClose) * 100 : 0);
+    const pe = safeNumber(yahooQuote?.trailingPE, 0);
+    return {
+      symbol: upperSymbol,
+      name: yahooQuote?.longName || yahooQuote?.shortName || upperSymbol,
+      exchange: normalizeExchange(yahooQuote?.fullExchangeName || yahooQuote?.exchange || ''),
+      price: currentPrice,
+      change: rawChange,
+      changePercent,
+      prediction: calculatePrediction({ changePercent, pe }),
+      volume: compactNumber(safeNumber(yahooQuote?.regularMarketVolume, 0)),
+      marketCap: compactNumber(safeNumber(yahooQuote?.marketCap, 0)),
+      pe,
+    };
+  }
 };
 
 const findConceptValue = (items = [], concepts = []) => {
@@ -467,13 +503,27 @@ createServer(async (req, res) => {
     if (req.method === 'GET' && requestUrl.pathname === '/api/stocks/search') {
       const q = String(requestUrl.searchParams.get('q') || '').trim();
       if (!q) return json(res, 200, { results: [] });
-      const data = await finnhubFetch('search', { q }, { ttlMs: 1000 * 60 * 10 });
-      const results = (data?.result || []).filter((item) => item.symbol).slice(0, 12).map((item) => ({
-        symbol: item.symbol,
-        name: item.description || item.displaySymbol || item.symbol,
-        exchange: normalizeExchange(item.primaryExchange || item.exchange || ''),
-        type: item.type || '',
-      }));
+      let results = [];
+      try {
+        const data = await finnhubFetch('search', { q }, { ttlMs: 1000 * 60 * 10 });
+        results = (data?.result || []).filter((item) => item.symbol).slice(0, 12).map((item) => ({
+          symbol: item.symbol,
+          name: item.description || item.displaySymbol || item.symbol,
+          exchange: normalizeExchange(item.primaryExchange || item.exchange || ''),
+          type: item.type || '',
+        }));
+      } catch {
+        const yahooResults = await yahooSearchSymbols(q);
+        results = yahooResults
+          .filter((item) => item?.symbol)
+          .slice(0, 12)
+          .map((item) => ({
+            symbol: item.symbol,
+            name: item.longname || item.shortname || item.symbol,
+            exchange: normalizeExchange(item.exchDisp || item.exchange || ''),
+            type: item.quoteType || '',
+          }));
+      }
       return json(res, 200, { results });
     }
 
