@@ -38,6 +38,10 @@ export function LoginPage({
         <span className="orbs orb-3" />
         <span className="scan scan-1" />
         <span className="scan scan-2" />
+        <div className="ticker-ribbon">
+          <span>SPY +0.41%</span><span>QQQ +0.58%</span><span>NVDA +1.12%</span><span>AAPL -0.22%</span><span>MSFT +0.37%</span>
+          <span>TSLA +0.83%</span><span>AMZN +0.54%</span><span>META +0.61%</span>
+        </div>
       </div>
       <div className="w-full max-w-md border border-white/20 rounded-2xl p-6 bg-slate-900/70 backdrop-blur-xl space-y-4 shadow-2xl text-white relative z-10">
         <div className="absolute -right-6 -top-6 w-24 h-24 rounded-full border border-white/20 bg-white/10 float-slow" />

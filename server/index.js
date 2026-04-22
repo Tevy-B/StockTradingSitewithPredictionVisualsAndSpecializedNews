@@ -393,7 +393,18 @@ const getStocksForUser = async (symbols) => {
       if (cached?.stock) {
         stocks.push(cached.stock);
       } else {
-        throw error;
+        stocks.push({
+          symbol,
+          name: symbol,
+          exchange: '',
+          price: 0,
+          change: 0,
+          changePercent: 0,
+          prediction: 50,
+          volume: 'N/A',
+          marketCap: 'N/A',
+          pe: 0,
+        });
       }
     }
   }

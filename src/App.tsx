@@ -82,19 +82,58 @@ export default function App() {
       setStocks([]);
       return;
     }
-    const payload = await getStocks(symbols);
-    setStocks(payload.stocks);
-    setLastRefreshDate(payload.lastRefreshDate);
-    setUsedCacheOnly(payload.usedCacheOnly);
+    const cacheKey = userEmail ? `stockpredict_last_stocks_${userEmail.toLowerCase()}` : '';
+    try {
+      const payload = await getStocks(symbols);
+      setStocks(payload.stocks);
+      setLastRefreshDate(payload.lastRefreshDate);
+      setUsedCacheOnly(payload.usedCacheOnly);
+      if (cacheKey) {
+        localStorage.setItem(cacheKey, JSON.stringify({
+          stocks: payload.stocks,
+          lastRefreshDate: payload.lastRefreshDate,
+          usedCacheOnly: payload.usedCacheOnly,
+        }));
+      }
+    } catch (stocksError) {
+      if (cacheKey) {
+        try {
+          const parsed = JSON.parse(localStorage.getItem(cacheKey) || '{}');
+          if (Array.isArray(parsed?.stocks) && parsed.stocks.length > 0) {
+            setStocks(parsed.stocks);
+            setLastRefreshDate(parsed.lastRefreshDate || 'Cached');
+            setUsedCacheOnly(true);
+            setError('Live data temporarily unavailable. Showing cached market data.');
+            return;
+          }
+        } catch {
+          // ignore parse errors
+        }
+      }
+      throw stocksError;
+    }
   };
 
   const bootstrap = async () => {
     try {
       setError('');
       if (!getStoredToken()) {
-        setIsLoading(false);
-        return;
+        try {
+          const rawCred = localStorage.getItem(LAST_LOGIN_CRED_KEY) || '';
+          const parsedCred = rawCred ? JSON.parse(rawCred) : null;
+          if (parsedCred?.email && parsedCred?.password) {
+            const auto = await login(parsedCred.email, parsedCred.password);
+            setStoredToken(auto.token);
+          } else {
+            setIsLoading(false);
+            return;
+          }
+        } catch {
+          setIsLoading(false);
+          return;
+        }
       }
+
       const me = await getMe();
       setUserEmail(me.user.email);
       const symbols = await getPortfolio();

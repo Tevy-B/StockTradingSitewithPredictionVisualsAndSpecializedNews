@@ -258,6 +258,24 @@ html {
 }
 .login-ambient .scan-1 { top: 22%; }
 .login-ambient .scan-2 { bottom: 24%; animation-delay: -2.2s; }
+.login-ambient .ticker-ribbon {
+  position: absolute;
+  bottom: 7%;
+  left: 0;
+  right: 0;
+  display: flex;
+  gap: 1.25rem;
+  white-space: nowrap;
+  font-size: 11px;
+  color: rgba(255,255,255,0.75);
+  animation: ticker-slide 16s linear infinite;
+}
+.login-ambient .ticker-ribbon span {
+  padding: 0.2rem 0.55rem;
+  border: 1px solid rgba(255,255,255,0.2);
+  border-radius: 999px;
+  background: rgba(255,255,255,0.06);
+}
 
 @keyframes orb-drift {
   0%, 100% { transform: translateY(0px) translateX(0px); opacity: 0.35; }
@@ -268,4 +286,9 @@ html {
   0% { transform: translateX(-18px); opacity: 0.2; }
   50% { transform: translateX(18px); opacity: 0.9; }
   100% { transform: translateX(-18px); opacity: 0.2; }
+}
+
+@keyframes ticker-slide {
+  from { transform: translateX(100%); }
+  to { transform: translateX(-100%); }
 }
