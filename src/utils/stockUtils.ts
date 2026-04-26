@@ -53,12 +53,16 @@ export interface StockExtendedDetail {
   analystConsensus: AnalystConsensus;
 
   profile?: {
+    symbol?: string;
+    name?: string;
     exchange?: string;
     industry?: string;
     country?: string;
+    currency?: string;
     ipo?: string;
     website?: string;
     logo?: string;
+    marketCap?: number;
   };
   sourceMeta?: {
     provider: string;

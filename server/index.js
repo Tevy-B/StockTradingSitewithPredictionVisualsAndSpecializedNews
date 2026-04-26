@@ -141,35 +141,98 @@ const finnhubFetch = async (apiPath, params = {}, options = {}) => {
   }
 };
 
+const yahooFetchQuoteSummary = async (symbol) => {
+  const modules = 'summaryProfile,defaultKeyStatistics,financialData,price,assetProfile';
+  const response = await fetch(`https://query1.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(symbol)}?modules=${modules}`);
+  if (!response.ok) throw new Error(`Yahoo quoteSummary failed: ${response.status}`);
+  const payload = await response.json();
+  return payload?.quoteSummary?.result?.[0] || null;
+};
+
+const yahooFetchChart = async (symbol, days) => {
+  const range = days <= 30 ? '1mo' : days <= 90 ? '3mo' : days <= 180 ? '6mo' : '1y';
+  const response = await fetch(`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=1d&range=${range}`);
+  if (!response.ok) throw new Error(`Yahoo chart failed: ${response.status}`);
+  const payload = await response.json();
+  const result = payload?.chart?.result?.[0];
+  const quote = result?.indicators?.quote?.[0];
+  if (!result || !Array.isArray(result.timestamp) || !quote) return [];
+
+  return result.timestamp.map((time, idx) => ({
+    time,
+    open: safeNumber(quote.open?.[idx]),
+    high: safeNumber(quote.high?.[idx]),
+    low: safeNumber(quote.low?.[idx]),
+    close: safeNumber(quote.close?.[idx]),
+    volume: safeNumber(quote.volume?.[idx]),
+  })).filter((point) => point.close > 0);
+};
+
+const yahooFetchQuote = async (symbol) => {
+  const response = await fetch(`https://query1.finance.yahoo.com/v7/finance/quote?symbols=${encodeURIComponent(symbol)}`);
+  if (!response.ok) throw new Error(`Yahoo quote failed: ${response.status}`);
+  const payload = await response.json();
+  return payload?.quoteResponse?.result?.[0] || null;
+};
+
+const yahooSearchSymbols = async (query) => {
+  const response = await fetch(`https://query1.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(query)}&quotesCount=12&newsCount=0`);
+  if (!response.ok) throw new Error(`Yahoo search failed: ${response.status}`);
+  const payload = await response.json();
+  return Array.isArray(payload?.quotes) ? payload.quotes : [];
+};
+
 const buildStock = async (symbol) => {
   const upperSymbol = symbol.toUpperCase();
-  const [quote, profile, metricResponse] = await Promise.all([
-    finnhubFetch('quote', { symbol: upperSymbol }, { ttlMs: 15000 }),
-    finnhubFetch('stock/profile2', { symbol: upperSymbol }, { ttlMs: 1000 * 60 * 60 * 12 }),
-    finnhubFetch('stock/metric', { symbol: upperSymbol, metric: 'all' }, { ttlMs: 1000 * 60 * 60 * 6 }),
-  ]);
+  try {
+    const [quote, profile, metricResponse] = await Promise.all([
+      finnhubFetch('quote', { symbol: upperSymbol }, { ttlMs: 15000 }),
+      finnhubFetch('stock/profile2', { symbol: upperSymbol }, { ttlMs: 1000 * 60 * 60 * 12 }),
+      finnhubFetch('stock/metric', { symbol: upperSymbol, metric: 'all' }, { ttlMs: 1000 * 60 * 60 * 6 }),
+    ]);
 
-  const currentPrice = safeNumber(quote.c);
-  if (!currentPrice) throw new Error(`No quote returned for ${upperSymbol}`);
+    const currentPrice = safeNumber(quote.c);
+    if (!currentPrice) throw new Error(`No quote returned for ${upperSymbol}`);
 
-  const previousClose = safeNumber(quote.pc, currentPrice);
-  const rawChange = safeNumber(quote.d, currentPrice - previousClose);
-  const changePercent = safeNumber(quote.dp, previousClose ? (rawChange / previousClose) * 100 : 0);
-  const pe = safeNumber(metricResponse?.metric?.peNormalizedAnnual || metricResponse?.metric?.peTTM, 0);
-  const marketCap = safeNumber(profile?.marketCapitalization, 0) * 1_000_000;
+    const previousClose = safeNumber(quote.pc, currentPrice);
+    const rawChange = safeNumber(quote.d, currentPrice - previousClose);
+    const changePercent = safeNumber(quote.dp, previousClose ? (rawChange / previousClose) * 100 : 0);
+    const pe = safeNumber(metricResponse?.metric?.peNormalizedAnnual || metricResponse?.metric?.peTTM, 0);
+    const marketCap = safeNumber(profile?.marketCapitalization, 0) * 1_000_000;
 
-  return {
-    symbol: upperSymbol,
-    name: profile?.name || upperSymbol,
-    exchange: normalizeExchange(profile?.exchange),
-    price: currentPrice,
-    change: rawChange,
-    changePercent,
-    prediction: calculatePrediction({ changePercent, pe }),
-    volume: compactNumber(safeNumber(quote.v, 0)),
-    marketCap: compactNumber(marketCap),
-    pe,
-  };
+    return {
+      symbol: upperSymbol,
+      name: profile?.name || upperSymbol,
+      exchange: normalizeExchange(profile?.exchange),
+      price: currentPrice,
+      change: rawChange,
+      changePercent,
+      prediction: calculatePrediction({ changePercent, pe }),
+      volume: compactNumber(safeNumber(quote.v, 0)),
+      marketCap: compactNumber(marketCap),
+      pe,
+    };
+  } catch {
+    const yahooQuote = await yahooFetchQuote(upperSymbol);
+    const currentPrice = safeNumber(yahooQuote?.regularMarketPrice);
+    if (!currentPrice) throw new Error(`No quote returned for ${upperSymbol}`);
+    const previousClose = safeNumber(yahooQuote?.regularMarketPreviousClose, currentPrice);
+    const rawChange = safeNumber(yahooQuote?.regularMarketChange, currentPrice - previousClose);
+    const changePercent = safeNumber(yahooQuote?.regularMarketChangePercent, previousClose ? (rawChange / previousClose) * 100 : 0);
+    const pe = safeNumber(yahooQuote?.trailingPE, 0);
+    return {
+      symbol: upperSymbol,
+      name: yahooQuote?.longName || yahooQuote?.shortName || upperSymbol,
+      exchange: normalizeExchange(yahooQuote?.fullExchangeName || yahooQuote?.exchange || ''),
+      price: currentPrice,
+      change: rawChange,
+      changePercent,
+      prediction: calculatePrediction({ changePercent, pe }),
+      volume: compactNumber(safeNumber(yahooQuote?.regularMarketVolume, 0)),
+      marketCap: compactNumber(safeNumber(yahooQuote?.marketCap, 0)),
+      pe,
+    };
+  }
 };
 
 const findConceptValue = (items = [], concepts = []) => {
@@ -200,50 +263,113 @@ const mapReportToEntry = (reportItem) => {
 };
 
 const buildStockDetail = async (symbol, stockSnapshot) => {
-  const [metricResponse, financials, recommendations, priceTarget, profile] = await Promise.all([
+  const [metricResponse, financials, recommendations, priceTarget, profile, yahooQuote] = await Promise.all([
     finnhubFetch('stock/metric', { symbol, metric: 'all' }, { ttlMs: 1000 * 60 * 60 * 6 }),
     finnhubFetch('stock/financials-reported', { symbol }, { ttlMs: 1000 * 60 * 60 * 12 }),
     finnhubFetch('stock/recommendation', { symbol }, { ttlMs: 1000 * 60 * 60 * 6 }),
     finnhubFetch('stock/price-target', { symbol }, { ttlMs: 1000 * 60 * 60 * 6 }),
     finnhubFetch('stock/profile2', { symbol }, { ttlMs: 1000 * 60 * 60 * 12 }),
+    yahooFetchQuote(symbol).catch(() => null),
   ]);
 
   const reports = Array.isArray(financials?.data) ? financials.data : [];
   const sorted = reports.sort((a, b) => new Date(b?.endDate || 0).getTime() - new Date(a?.endDate || 0).getTime());
-  const annual = sorted.filter((item) => ['10-K', '20-F', '40-F'].includes(item?.form)).slice(0, 4).map(mapReportToEntry);
-  const quarterly = sorted.filter((item) => !['10-K', '20-F', '40-F'].includes(item?.form)).slice(0, 4).map(mapReportToEntry);
+  let annual = sorted.filter((item) => ['10-K', '20-F', '40-F'].includes(item?.form)).slice(0, 4).map(mapReportToEntry);
+  let quarterly = sorted.filter((item) => !['10-K', '20-F', '40-F'].includes(item?.form)).slice(0, 4).map(mapReportToEntry);
 
   const latestRec = Array.isArray(recommendations) && recommendations.length > 0 ? recommendations[0] : {};
   const derivedConsensus = consensusFromRecommendation(latestRec);
-  const averagePriceTarget = safeNumber(priceTarget?.targetMean || priceTarget?.targetMedian, stockSnapshot?.price || 0);
+  let averagePriceTarget = safeNumber(priceTarget?.targetMean || priceTarget?.targetMedian, stockSnapshot?.price || 0);
+  let highTarget = safeNumber(priceTarget?.targetHigh, averagePriceTarget);
+  let lowTarget = safeNumber(priceTarget?.targetLow, averagePriceTarget);
+  let sourceProvider = 'Finnhub';
+
+  const missingFinancials = annual.length === 0 && quarterly.length === 0;
+  const missingAnalystTargets = averagePriceTarget <= 0;
+
+  if (missingFinancials || missingAnalystTargets) {
+    try {
+      const yahooData = await yahooFetchQuoteSummary(symbol);
+      const financialData = yahooData?.financialData || {};
+      const summaryProfile = yahooData?.summaryProfile || {};
+      const assetProfile = yahooData?.assetProfile || {};
+      const keyStats = yahooData?.defaultKeyStatistics || {};
+
+      if (missingFinancials) {
+        const yahooEntry = {
+          period: 'TTM (Yahoo)',
+          revenue: toBillions(safeNumber(financialData?.totalRevenue?.raw)),
+          netIncome: toBillions(safeNumber(financialData?.netIncomeToCommon?.raw)),
+          totalAssets: 0,
+          totalLiabilities: toBillions(safeNumber(financialData?.totalDebt?.raw)),
+          shareholdersEquity: 0,
+          operatingCashFlow: toBillions(safeNumber(financialData?.operatingCashflow?.raw)),
+        };
+        annual = [yahooEntry];
+        quarterly = [yahooEntry];
+      }
+
+      if (missingAnalystTargets) {
+        averagePriceTarget = safeNumber(financialData?.targetMeanPrice?.raw, stockSnapshot?.price || 0);
+        highTarget = safeNumber(financialData?.targetHighPrice?.raw, averagePriceTarget);
+        lowTarget = safeNumber(financialData?.targetLowPrice?.raw, averagePriceTarget);
+      }
+
+      if (!profile?.finnhubIndustry && (summaryProfile?.industry || assetProfile?.industry)) profile.finnhubIndustry = summaryProfile?.industry || assetProfile?.industry;
+      if (!profile?.country && (summaryProfile?.country || assetProfile?.country)) profile.country = summaryProfile?.country || assetProfile?.country;
+      if (!profile?.weburl && (summaryProfile?.website || assetProfile?.website)) profile.weburl = summaryProfile?.website || assetProfile?.website;
+      if (!metricResponse?.metric?.beta && keyStats?.beta?.raw) metricResponse.metric = { ...(metricResponse.metric || {}), beta: keyStats.beta.raw };
+      sourceProvider = 'Finnhub + Yahoo Finance';
+    } catch {
+      // ignore yahoo fallback failures
+    }
+  }
+
+  if (!profile?.finnhubIndustry || !profile?.country || !profile?.weburl) {
+    try {
+      const yahooData = await yahooFetchQuoteSummary(symbol);
+      const summaryProfile = yahooData?.summaryProfile || {};
+      const assetProfile = yahooData?.assetProfile || {};
+      if (!profile?.finnhubIndustry) profile.finnhubIndustry = summaryProfile?.industry || assetProfile?.industry || '';
+      if (!profile?.country) profile.country = summaryProfile?.country || assetProfile?.country || '';
+      if (!profile?.weburl) profile.weburl = summaryProfile?.website || assetProfile?.website || '';
+      if (sourceProvider === 'Finnhub') sourceProvider = 'Finnhub + Yahoo Finance';
+    } catch {
+      // keep existing profile data
+    }
+  }
 
   return {
     beta: safeNumber(metricResponse?.metric?.beta, 1),
     eps: safeNumber(metricResponse?.metric?.epsTTM || metricResponse?.metric?.epsNormalizedAnnual, 0),
     dividend: safeNumber(metricResponse?.metric?.dividendPerShareAnnual, 0),
-    high52w: safeNumber(metricResponse?.metric?.['52WeekHigh'], stockSnapshot?.price || 0),
-    low52w: safeNumber(metricResponse?.metric?.['52WeekLow'], stockSnapshot?.price || 0),
+    high52w: safeNumber(metricResponse?.metric?.['52WeekHigh'], safeNumber(yahooQuote?.fiftyTwoWeekHigh, stockSnapshot?.price || 0)),
+    low52w: safeNumber(metricResponse?.metric?.['52WeekLow'], safeNumber(yahooQuote?.fiftyTwoWeekLow, stockSnapshot?.price || 0)),
     balanceSheet: { annual, quarterly },
     analystConsensus: {
       consensus: derivedConsensus.consensus,
       averagePriceTarget,
-      highTarget: safeNumber(priceTarget?.targetHigh, averagePriceTarget),
-      lowTarget: safeNumber(priceTarget?.targetLow, averagePriceTarget),
+      highTarget,
+      lowTarget,
       buyCount: derivedConsensus.buyCount,
       holdCount: derivedConsensus.holdCount,
       sellCount: derivedConsensus.sellCount,
       ratings: [],
     },
     profile: {
-      exchange: normalizeExchange(profile?.exchange),
+      symbol,
+      name: profile?.name || yahooQuote?.longName || yahooQuote?.shortName || stockSnapshot?.name || symbol,
+      exchange: normalizeExchange(profile?.exchange || yahooQuote?.fullExchangeName || yahooQuote?.exchange),
       industry: profile?.finnhubIndustry || '',
       country: profile?.country || '',
+      currency: profile?.currency || yahooQuote?.currency || '',
       ipo: profile?.ipo || '',
       website: profile?.weburl || '',
       logo: profile?.logo || '',
+      marketCap: safeNumber(profile?.marketCapitalization, 0) * 1_000_000 || safeNumber(yahooQuote?.marketCap, 0),
     },
     sourceMeta: {
-      provider: 'Finnhub',
+      provider: sourceProvider,
       fetchedAt: new Date().toISOString(),
     },
   };
@@ -392,13 +518,27 @@ createServer(async (req, res) => {
     if (req.method === 'GET' && requestUrl.pathname === '/api/stocks/search') {
       const q = String(requestUrl.searchParams.get('q') || '').trim();
       if (!q) return json(res, 200, { results: [] });
-      const data = await finnhubFetch('search', { q }, { ttlMs: 1000 * 60 * 10 });
-      const results = (data?.result || []).filter((item) => item.symbol).slice(0, 12).map((item) => ({
-        symbol: item.symbol,
-        name: item.description || item.displaySymbol || item.symbol,
-        exchange: normalizeExchange(item.primaryExchange || item.exchange || ''),
-        type: item.type || '',
-      }));
+      let results = [];
+      try {
+        const data = await finnhubFetch('search', { q }, { ttlMs: 1000 * 60 * 10 });
+        results = (data?.result || []).filter((item) => item.symbol).slice(0, 12).map((item) => ({
+          symbol: item.symbol,
+          name: item.description || item.displaySymbol || item.symbol,
+          exchange: normalizeExchange(item.primaryExchange || item.exchange || ''),
+          type: item.type || '',
+        }));
+      } catch {
+        const yahooResults = await yahooSearchSymbols(q);
+        results = yahooResults
+          .filter((item) => item?.symbol)
+          .slice(0, 12)
+          .map((item) => ({
+            symbol: item.symbol,
+            name: item.longname || item.shortname || item.symbol,
+            exchange: normalizeExchange(item.exchDisp || item.exchange || ''),
+            type: item.quoteType || '',
+          }));
+      }
       return json(res, 200, { results });
     }
 
@@ -410,20 +550,33 @@ createServer(async (req, res) => {
       const days = Number.isFinite(range) ? Math.max(7, Math.min(365, range)) : 90;
       const to = Math.floor(Date.now() / 1000);
       const from = to - (days * 24 * 60 * 60);
-      const data = await finnhubFetch('stock/candle', { symbol, resolution: 'D', from: String(from), to: String(to) }, { ttlMs: 1000 * 60 * 30 });
+      let points = [];
+      let source = 'Finnhub';
 
-      if (data?.s !== 'ok') return json(res, 200, { points: [] });
+      try {
+        const data = await finnhubFetch('stock/candle', { symbol, resolution: 'D', from: String(from), to: String(to) }, { ttlMs: 1000 * 60 * 30 });
+        points = (data?.t || []).map((timestamp, idx) => ({
+          time: timestamp,
+          open: safeNumber(data.o?.[idx]),
+          high: safeNumber(data.h?.[idx]),
+          low: safeNumber(data.l?.[idx]),
+          close: safeNumber(data.c?.[idx]),
+          volume: safeNumber(data.v?.[idx]),
+        })).filter((point) => point.close > 0);
+      } catch {
+        points = [];
+      }
 
-      const points = (data.t || []).map((timestamp, idx) => ({
-        time: timestamp,
-        open: safeNumber(data.o?.[idx]),
-        high: safeNumber(data.h?.[idx]),
-        low: safeNumber(data.l?.[idx]),
-        close: safeNumber(data.c?.[idx]),
-        volume: safeNumber(data.v?.[idx]),
-      })).filter((point) => point.close > 0);
+      if (points.length === 0) {
+        try {
+          points = await yahooFetchChart(symbol, days);
+          if (points.length > 0) source = 'Yahoo Finance (fallback)';
+        } catch {
+          points = [];
+        }
+      }
 
-      return json(res, 200, { points, source: 'Finnhub' });
+      return json(res, 200, { points, source });
     }
 
     const detailMatch = requestUrl.pathname.match(/^\/api\/stocks\/([^/]+)\/detail$/);

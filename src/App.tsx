@@ -1,11 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { DollarSign, Activity, Info, ShieldCheck, ExternalLink } from 'lucide-react';
+import { DollarSign, Activity, Info, ShieldCheck, ExternalLink, Sparkles, Gem, Rocket, BarChart4, Shield } from 'lucide-react';
 import { StockCard } from './components/StockCard';
 import { StockDetail } from './components/StockDetail';
 import { MarketSummary } from './components/MarketSummary';
 import { Badge } from './components/ui/badge';
 import { Tooltip, TooltipContent, TooltipTrigger } from './components/ui/tooltip';
-import { Input } from './components/ui/input';
 import { Button } from './components/ui/button';
 import { filterStocks, Stock } from './utils/stockUtils';
 import {
@@ -21,9 +20,19 @@ import {
   getStoredToken,
 } from './services/api';
 import { StockSearch, StockSuggestion } from './components/StockSearch';
+import { LoginPage } from './components/LoginPage';
+import { AboutPage } from './components/AboutPage';
 
 const LAST_EMAIL_KEY = 'stockpredict_last_email';
+const REMEMBERED_EMAILS_KEY = 'stockpredict_remembered_emails';
+const LAST_LOGIN_CRED_KEY = 'stockpredict_last_login_cred';
 const getLocalPortfolioKey = (email: string) => `stockpredict_portfolio_${email.toLowerCase()}`;
+const readRoute = () => {
+  const url = new URL(window.location.href);
+  const page = (url.searchParams.get('page') || 'dashboard') as 'dashboard' | 'about';
+  const stock = url.searchParams.get('stock')?.toUpperCase() || '';
+  return { page: page === 'about' ? 'about' : 'dashboard', stock };
+};
 
 export default function App() {
   const [stocks, setStocks] = useState<Stock[]>([]);
@@ -40,6 +49,17 @@ export default function App() {
   const [userEmail, setUserEmail] = useState('');
   const [loginEmail, setLoginEmail] = useState(() => localStorage.getItem(LAST_EMAIL_KEY) || '');
   const [loginPassword, setLoginPassword] = useState('');
+  const [rememberMe, setRememberMe] = useState(true);
+  const [rememberedEmails, setRememberedEmails] = useState<string[]>(() => {
+    try {
+      const parsed = JSON.parse(localStorage.getItem(REMEMBERED_EMAILS_KEY) || '[]');
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  });
+  const initialRoute = readRoute();
+  const [currentPage, setCurrentPage] = useState<'dashboard' | 'about'>(initialRoute.page);
 
   const marketSummary = useMemo(() => {
     const totalValue = stocks.reduce((sum, stock) => sum + stock.price, 0);
@@ -48,30 +68,78 @@ export default function App() {
     return { totalValue, dailyChange, dailyChangePercent };
   }, [stocks]);
 
+  const pushRoute = (page: 'dashboard' | 'about', stock?: string) => {
+    const url = new URL(window.location.href);
+    url.searchParams.set('page', page);
+    if (stock) url.searchParams.set('stock', stock);
+    else url.searchParams.delete('stock');
+    window.history.pushState({ page, stock }, '', url.toString());
+    setCurrentPage(page);
+  };
+
   const refreshStocks = async (symbols: string[]) => {
     if (!symbols.length) {
       setStocks([]);
       return;
     }
-    const payload = await getStocks(symbols);
-    setStocks(payload.stocks);
-    setLastRefreshDate(payload.lastRefreshDate);
-    setUsedCacheOnly(payload.usedCacheOnly);
+    const cacheKey = userEmail ? `stockpredict_last_stocks_${userEmail.toLowerCase()}` : '';
+    try {
+      const payload = await getStocks(symbols);
+      setStocks(payload.stocks);
+      setLastRefreshDate(payload.lastRefreshDate);
+      setUsedCacheOnly(payload.usedCacheOnly);
+      if (cacheKey) {
+        localStorage.setItem(cacheKey, JSON.stringify({
+          stocks: payload.stocks,
+          lastRefreshDate: payload.lastRefreshDate,
+          usedCacheOnly: payload.usedCacheOnly,
+        }));
+      }
+    } catch (stocksError) {
+      if (cacheKey) {
+        try {
+          const parsed = JSON.parse(localStorage.getItem(cacheKey) || '{}');
+          if (Array.isArray(parsed?.stocks) && parsed.stocks.length > 0) {
+            setStocks(parsed.stocks);
+            setLastRefreshDate(parsed.lastRefreshDate || 'Cached');
+            setUsedCacheOnly(true);
+            setError('Live data temporarily unavailable. Showing cached market data.');
+            return;
+          }
+        } catch {
+          // ignore parse errors
+        }
+      }
+      throw stocksError;
+    }
   };
 
   const bootstrap = async () => {
     try {
       setError('');
       if (!getStoredToken()) {
-        setIsLoading(false);
-        return;
+        try {
+          const rawCred = localStorage.getItem(LAST_LOGIN_CRED_KEY) || '';
+          const parsedCred = rawCred ? JSON.parse(rawCred) : null;
+          if (parsedCred?.email && parsedCred?.password) {
+            const auto = await login(parsedCred.email, parsedCred.password);
+            setStoredToken(auto.token);
+          } else {
+            setIsLoading(false);
+            return;
+          }
+        } catch {
+          setIsLoading(false);
+          return;
+        }
       }
+
       const me = await getMe();
       setUserEmail(me.user.email);
       const symbols = await getPortfolio();
       let localSymbols: string[] = [];
       try {
-        const parsed = JSON.parse(localStorage.getItem(getLocalPortfolioKey(payload.user.email)) || '[]');
+        const parsed = JSON.parse(localStorage.getItem(getLocalPortfolioKey(me.user.email)) || '[]');
         localSymbols = Array.isArray(parsed) ? parsed : [];
       } catch {
         localSymbols = [];
@@ -88,8 +156,11 @@ export default function App() {
 
       setPortfolioSymbols(mergedSymbols);
       await refreshStocks(mergedSymbols);
-    } catch {
-      clearStoredToken();
+    } catch (bootstrapError) {
+      const message = bootstrapError instanceof Error ? bootstrapError.message : '';
+      if (message.toLowerCase().includes('unauthorized')) {
+        clearStoredToken();
+      }
       setUserEmail('');
     } finally {
       setIsLoading(false);
@@ -105,6 +176,16 @@ export default function App() {
     if (!userEmail) return;
     localStorage.setItem(LAST_EMAIL_KEY, userEmail);
   }, [userEmail]);
+
+  useEffect(() => {
+    if (!rememberMe) return;
+    localStorage.setItem(LAST_EMAIL_KEY, loginEmail.trim().toLowerCase());
+  }, [loginEmail, rememberMe]);
+
+  useEffect(() => {
+    if (rememberMe) return;
+    localStorage.removeItem(LAST_EMAIL_KEY);
+  }, [rememberMe]);
 
   useEffect(() => {
     if (!userEmail || portfolioSymbols.length === 0) return;
@@ -158,6 +239,18 @@ export default function App() {
   };
 
   const filteredStocks = filterStocks(stocks, searchTerm);
+  const featuredTape = (stocks.length ? stocks : []).slice(0, 8);
+
+  const openStockDetail = (stock: Stock) => {
+    setCurrentPage('dashboard');
+    setSelectedStock(stock);
+    pushRoute('dashboard', stock.symbol);
+  };
+
+  const closeStockDetail = () => {
+    setSelectedStock(null);
+    pushRoute(currentPage);
+  };
 
   const handleAuth = async (mode: 'login' | 'register') => {
     try {
@@ -167,7 +260,16 @@ export default function App() {
         : await register(loginEmail, loginPassword);
       setStoredToken(payload.token);
       setUserEmail(payload.user.email);
-      localStorage.setItem(LAST_EMAIL_KEY, payload.user.email);
+      if (rememberMe) {
+        localStorage.setItem(LAST_EMAIL_KEY, payload.user.email);
+        const merged = Array.from(new Set([payload.user.email, ...rememberedEmails])).slice(0, 6);
+        localStorage.setItem(REMEMBERED_EMAILS_KEY, JSON.stringify(merged));
+        localStorage.setItem(LAST_LOGIN_CRED_KEY, JSON.stringify({ email: payload.user.email, password: loginPassword }));
+        setRememberedEmails(merged);
+      } else {
+        localStorage.removeItem(LAST_EMAIL_KEY);
+        localStorage.removeItem(LAST_LOGIN_CRED_KEY);
+      }
       const symbols = await getPortfolio();
       let localSymbols: string[] = [];
       try {
@@ -193,22 +295,75 @@ export default function App() {
     }
   };
 
+  useEffect(() => {
+    const syncFromLocation = () => {
+      const route = readRoute();
+      setCurrentPage(route.page);
+      if (!userEmail) return;
+      const symbol = route.stock;
+      if (!symbol) {
+        setSelectedStock(null);
+        return;
+      }
+
+      const located = stocks.find((item) => item.symbol === symbol);
+      if (located) {
+        setSelectedStock(located);
+        return;
+      }
+
+      setSelectedStock({
+        symbol,
+        name: symbol,
+        exchange: '',
+        price: 0,
+        change: 0,
+        changePercent: 0,
+        prediction: 50,
+        volume: 'N/A',
+        marketCap: 'N/A',
+        pe: 0,
+      });
+    };
+
+    syncFromLocation();
+    window.addEventListener('popstate', syncFromLocation);
+    return () => window.removeEventListener('popstate', syncFromLocation);
+  }, [userEmail, stocks]);
+
+  useEffect(() => {
+    if (userEmail || !rememberMe || loginPassword) return;
+    try {
+      const raw = localStorage.getItem(LAST_LOGIN_CRED_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (parsed?.email && parsed?.password) {
+        setLoginEmail(parsed.email);
+        setLoginPassword(parsed.password);
+      }
+    } catch {
+      // ignore invalid payload
+    }
+  }, [userEmail, rememberMe, loginPassword]);
+
   if (!userEmail) {
-    return (
-      <div className="min-h-screen grid place-items-center p-4">
-        <div className="w-full max-w-md border rounded-lg p-6 bg-card space-y-3">
-          <h1 className="text-xl font-semibold">Sign in to StockPredict</h1>
-          <Input placeholder="Email" value={loginEmail} onChange={(e) => setLoginEmail(e.target.value)} />
-          <Input type="password" placeholder="Password" value={loginPassword} onChange={(e) => setLoginPassword(e.target.value)} />
-          {error && <p className="text-sm text-red-600">{error}</p>}
-          <div className="flex gap-2">
-            <Button onClick={() => handleAuth('login')}>Login</Button>
-            <Button variant="outline" onClick={() => handleAuth('register')}>Register</Button>
-          </div>
-          <p className="text-xs text-muted-foreground">Your ticker dashboard is saved per account on the backend store.</p>
-        </div>
-      </div>
-    );
+    return <LoginPage
+      loginEmail={loginEmail}
+      loginPassword={loginPassword}
+      rememberMe={rememberMe}
+      rememberedEmails={rememberedEmails}
+      error={error}
+      onEmailChange={setLoginEmail}
+      onPasswordChange={setLoginPassword}
+      onRememberChange={setRememberMe}
+      onLogin={() => handleAuth('login')}
+      onRegister={() => handleAuth('register')}
+    />;
+  }
+
+  if (selectedStock) {
+    const latest = stocks.find((stock) => stock.symbol === selectedStock.symbol) || selectedStock;
+    return <StockDetail stock={latest} onBack={closeStockDetail} />;
   }
 
   if (selectedStock) {
@@ -217,20 +372,23 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-background overflow-x-hidden">
       <header className="border-b border-border bg-card">
         <div className="container mx-auto px-4 py-4">
-          <div className="flex items-center justify-between gap-4">
+          <div className="flex items-center justify-between gap-3 flex-wrap">
             <div className="flex items-center gap-2">
               <DollarSign className="h-8 w-8 text-primary" />
-              <h1 className="text-2xl font-bold">StockPredict</h1>
+              <h1 className="text-xl sm:text-2xl font-bold">StockPredict</h1>
             </div>
             <div className="flex items-center gap-3">
               <Badge variant="secondary" className="gap-1 cursor-help">
                 <Activity className="h-4 w-4 animate-pulse text-green-500" />
                 Live Market
               </Badge>
-              <Button variant="outline" size="sm" onClick={() => { clearStoredToken(); setUserEmail(''); }}>Logout</Button>
+              <Button variant={currentPage === 'about' ? 'default' : 'outline'} size="sm" onClick={() => pushRoute(currentPage === 'about' ? 'dashboard' : 'about')}>
+                {currentPage === 'about' ? 'Dashboard' : 'About'}
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => { clearStoredToken(); setLoginEmail(userEmail); setUserEmail(''); }}>Logout</Button>
             </div>
           </div>
           <p className="text-xs text-muted-foreground mt-2">Signed in as {userEmail}</p>
@@ -238,6 +396,62 @@ export default function App() {
       </header>
 
       <div className="container mx-auto px-4 py-6">
+        {currentPage === 'about' ? (
+          <AboutPage />
+        ) : (
+          <>
+        <section className="lux-grid-bg relative overflow-hidden rounded-2xl border border-primary/20 bg-gradient-to-r from-slate-950 via-slate-900 to-indigo-950 text-white p-5 sm:p-8 mb-6">
+          <div className="absolute -top-8 -right-8 h-40 w-40 rounded-full bg-fuchsia-500/20 blur-2xl animate-pulse" />
+          <div className="absolute -bottom-10 left-10 h-32 w-32 rounded-full bg-blue-400/20 blur-2xl animate-pulse" />
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.12),transparent_45%)]" />
+          <div className="relative grid gap-4 sm:grid-cols-2 items-center">
+            <div className="space-y-2">
+              <Badge className="bg-white/15 text-white border-white/30"><Sparkles className="h-3 w-3 mr-1" />Premium Live Intelligence</Badge>
+              <h2 className="text-2xl sm:text-3xl font-bold leading-tight">Professional-grade financial intelligence, designed for confident decisions.</h2>
+              <p className="text-sm text-slate-200">Track your personal watchlist, review chart trends, and validate prices with trusted real-market sources.</p>
+              <div className="flex flex-wrap gap-2 pt-2">
+                <Badge variant="secondary" className="bg-white/10 text-white border-white/30"><Rocket className="h-3 w-3 mr-1" /> Fast live dashboard</Badge>
+                <Badge variant="secondary" className="bg-white/10 text-white border-white/30"><BarChart4 className="h-3 w-3 mr-1" /> Actionable visuals</Badge>
+                <Badge variant="secondary" className="bg-white/10 text-white border-white/30"><Shield className="h-3 w-3 mr-1" /> Transparent sourcing</Badge>
+              </div>
+            </div>
+            <div className="grid gap-2 sm:justify-items-end">
+              <div className="rounded-xl border border-white/20 bg-white/10 px-3 py-2 w-full sm:max-w-xs animate-pulse">
+                <p className="text-xs text-slate-200">Last refresh market date</p>
+                <p className="font-semibold">{lastRefreshDate || 'Loading...'}</p>
+              </div>
+              <div className="rounded-xl border border-white/20 bg-white/10 px-3 py-2 w-full sm:max-w-xs">
+                <p className="text-xs text-slate-200 flex items-center gap-1"><Gem className="h-3 w-3" /> Data confidence</p>
+                <p className="font-semibold">{usedCacheOnly ? 'Weekend cached snapshot' : 'Live + cached blend'}</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="relative mt-5 overflow-hidden rounded-xl border border-white/20 bg-black/20">
+            <div className="marquee-track py-2">
+              <div className="marquee-content">
+                {[...(featuredTape.length ? featuredTape : [
+                  { symbol: 'AAPL', price: 0, changePercent: 0 },
+                  { symbol: 'MSFT', price: 0, changePercent: 0 },
+                  { symbol: 'NVDA', price: 0, changePercent: 0 },
+                ]), ...(featuredTape.length ? featuredTape : [
+                  { symbol: 'AAPL', price: 0, changePercent: 0 },
+                  { symbol: 'MSFT', price: 0, changePercent: 0 },
+                  { symbol: 'NVDA', price: 0, changePercent: 0 },
+                ])].map((item, idx) => (
+                  <span key={`${item.symbol}-${idx}`} className="mx-4 inline-flex items-center gap-2 text-xs sm:text-sm min-w-[132px]">
+                    <strong>{item.symbol}</strong>
+                    <span>{item.price ? `$${item.price.toFixed(2)}` : 'Loading…'}</span>
+                    <span className={item.changePercent >= 0 ? 'text-emerald-300' : 'text-red-300'}>
+                      {item.changePercent >= 0 ? '+' : ''}{item.changePercent.toFixed(2)}%
+                    </span>
+                  </span>
+                ))}
+              </div>
+            </div>
+          </div>
+        </section>
+
         <MarketSummary stocks={stocks} marketSummary={marketSummary} />
 
         <div className="mb-2 text-xs text-muted-foreground">
@@ -295,9 +509,11 @@ export default function App() {
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {filteredStocks.map((stock) => (
-            <StockCard key={stock.symbol} stock={stock} onClick={() => setSelectedStock(stock)} />
+            <StockCard key={stock.symbol} stock={stock} onClick={() => openStockDetail(stock)} />
           ))}
         </div>
+          </>
+        )}
       </div>
     </div>
   );

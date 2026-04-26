@@ -5,7 +5,7 @@ A modern, full-stack stock intelligence dashboard with:
 - 🔐 Account login and user-specific watchlists
 - 📈 Live market quotes + news from Finnhub (server-side token)
 - 🧠 Prediction scoring + analyst/financial detail panels
-- 📊 Real Finnhub candle chart + company profile metadata
+- 📊 Real Finnhub candle chart + Yahoo fallback for sparse tickers
 - 🗂 Weekend snapshot persistence to reduce market API dependency
 - 🚀 Ready for local dev, Docker, and Render deployment
 
@@ -32,6 +32,10 @@ StockPredict is designed to be transparent, fast, and practical:
 - **Operational reliability**: weekends and rate-limit scenarios use saved snapshots and cache fallback.
 - **Personalized experience**: each logged-in user sees their own portfolio and symbols.
 - **Production-ready architecture**: one Node service serves both API + front-end bundle.
+- **Explainable model**: prediction logic and data-source mapping are documented for review.
+
+Read the full plain-English model guide here:  
+➡️ **[Prediction Model Documentation](docs/PREDICTION_MODEL.md)**
 
 ---
 
@@ -112,6 +116,7 @@ StockPredict is designed to be transparent, fast, and practical:
 - `GET /api/stocks?symbols=AAPL,MSFT`
 - `GET /api/stocks/search?q=eli lilly`
 - `GET /api/stocks/:symbol/detail`
+- `GET /api/stocks/:symbol/chart?days=90`
 - `GET /api/stocks/:symbol/news`
 
 ### Health
@@ -193,6 +198,7 @@ docker run -p 8787:8787 -e FINNHUB_API_KEY=your_key stockpredict-live
 
 - Finnhub free tiers enforce rate limits.
 - Backend cache + weekend snapshots significantly reduce call frequency.
+- Chart/detail endpoints include Yahoo fallback for symbols with sparse Finnhub coverage.
 - If Finnhub is temporarily unavailable, cached data may still serve key views.
 
 ---

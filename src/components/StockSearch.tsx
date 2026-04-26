@@ -41,7 +41,7 @@ export function StockSearch({
 
   return (
     <div className="relative w-full">
-      <div className="relative flex gap-2">
+      <div className="relative flex gap-2 flex-col sm:flex-row">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
           <Input
@@ -67,9 +67,9 @@ export function StockSearch({
             </Button>
           )}
         </div>
-        <Button onClick={onAddTicker} className="gap-2">
+        <Button onClick={onAddTicker} className="gap-2 w-full sm:w-auto">
           <Plus className="h-4 w-4" />
-          Add ticker
+          <span className="sm:inline">Add ticker</span>
         </Button>
       </div>
 
