@@ -366,6 +366,11 @@ export default function App() {
     return <StockDetail stock={latest} onBack={closeStockDetail} />;
   }
 
+  if (selectedStock) {
+    const latest = stocks.find((stock) => stock.symbol === selectedStock.symbol) || selectedStock;
+    return <StockDetail stock={latest} onBack={() => setSelectedStock(null)} />;
+  }
+
   return (
     <div className="min-h-screen bg-background overflow-x-hidden">
       <header className="border-b border-border bg-card">
