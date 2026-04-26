@@ -27,6 +27,10 @@ const LAST_EMAIL_KEY = 'stockpredict_last_email';
 const REMEMBERED_EMAILS_KEY = 'stockpredict_remembered_emails';
 const LAST_LOGIN_CRED_KEY = 'stockpredict_last_login_cred';
 const getLocalPortfolioKey = (email: string) => `stockpredict_portfolio_${email.toLowerCase()}`;
+const isAuthFailure = (error: unknown) => {
+  const message = error instanceof Error ? error.message.toLowerCase() : '';
+  return message.includes('unauthorized') || message.includes('401') || message.includes('forbidden') || message.includes('403');
+};
 const readRoute = () => {
   const url = new URL(window.location.href);
   const page = (url.searchParams.get('page') || 'dashboard') as 'dashboard' | 'about';
@@ -157,11 +161,12 @@ export default function App() {
       setPortfolioSymbols(mergedSymbols);
       await refreshStocks(mergedSymbols);
     } catch (bootstrapError) {
-      const message = bootstrapError instanceof Error ? bootstrapError.message : '';
-      if (message.toLowerCase().includes('unauthorized')) {
+      if (isAuthFailure(bootstrapError)) {
         clearStoredToken();
+        setUserEmail('');
+      } else {
+        setError(bootstrapError instanceof Error ? bootstrapError.message : 'Unable to load portfolio data.');
       }
-      setUserEmail('');
     } finally {
       setIsLoading(false);
     }
