@@ -25,25 +25,29 @@ function generateJarvisReply(input: string): string {
     return 'I can’t assist with money movement, banking, purchases, investing, or trading actions. I can still help with project strategy, specs, coding, and GitHub workflows.';
   }
 
-  return `Understood. Here is a practical next step:\n\n1) I’ll draft a short execution plan for: "${input}"\n2) I’ll identify files/components to touch\n3) I’ll ask for your approval before any edit, branch, PR, or risky command.`;
+  return `I understood your request: "${input}".
+
+Plan:
+1) Clarify the task goal
+2) Break it into actionable steps
+3) Ask approval before edits/git actions
+
+Tell me if you want me to produce the exact implementation steps now.`;
 }
 
 export function JarvisPage() {
   const [prompt, setPrompt] = useState('');
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      role: 'jarvis',
-      content: 'Jarvis online. Say "Hey Jarvis" anytime after microphone permission is granted, then speak your request naturally.',
-    },
-  ]);
+  const [messages, setMessages] = useState<Message[]>([{ role: 'jarvis', content: 'Jarvis online. Say "Hey Jarvis", pause after your command, and I will respond.' }]);
   const [voiceState, setVoiceState] = useState<VoiceState>('idle');
   const [liveTranscript, setLiveTranscript] = useState('');
   const [isWakeMode, setIsWakeMode] = useState(true);
   const [permissionError, setPermissionError] = useState('');
 
   const recognitionRef = useRef<SpeechRecognitionType | null>(null);
-  const lastSpeechRef = useRef('');
   const shouldRestartRef = useRef(true);
+  const finalBufferRef = useRef('');
+  const pauseTimerRef = useRef<number | null>(null);
+  const lastProcessedRef = useRef('');
 
   const canUseSpeechApi = useMemo(() => {
     if (typeof window === 'undefined') return false;
@@ -54,8 +58,6 @@ export function JarvisPage() {
     if (typeof window === 'undefined' || !window.speechSynthesis) return;
     setVoiceState('speaking');
     const utterance = new SpeechSynthesisUtterance(text);
-    utterance.rate = 1;
-    utterance.pitch = 1;
     utterance.onend = () => setVoiceState('listening');
     window.speechSynthesis.cancel();
     window.speechSynthesis.speak(utterance);
@@ -63,7 +65,10 @@ export function JarvisPage() {
 
   const processUserMessage = (value: string) => {
     const clean = value.trim();
-    if (!clean) return;
+    if (!clean || clean === lastProcessedRef.current) return;
+    lastProcessedRef.current = clean;
+    setVoiceState('processing');
+
     const userMessage: Message = { role: 'user', content: clean };
     const reply = generateJarvisReply(clean);
     const jarvisMessage: Message = { role: 'jarvis', content: reply };
@@ -73,23 +78,27 @@ export function JarvisPage() {
     speak(reply);
   };
 
-  const handleTranscript = (text: string) => {
-    const normalized = text.trim();
-    setLiveTranscript(normalized);
-    if (!normalized || normalized === lastSpeechRef.current) return;
+  const finishOnPause = () => {
+    if (pauseTimerRef.current) window.clearTimeout(pauseTimerRef.current);
+    pauseTimerRef.current = window.setTimeout(() => {
+      const captured = finalBufferRef.current.trim();
+      if (!captured) return;
 
-    if (isWakeMode) {
-      if (normalized.toLowerCase().includes(WAKE_WORD)) {
-        setIsWakeMode(false);
-        lastSpeechRef.current = normalized;
-        setMessages((prev) => [...prev, { role: 'jarvis', content: 'I’m listening. Tell me what you want me to do.' }]);
+      if (isWakeMode) {
+        if (captured.toLowerCase().includes(WAKE_WORD)) {
+          setIsWakeMode(false);
+          setMessages((prev) => [...prev, { role: 'jarvis', content: 'I’m listening. Say your command now, then pause.' }]);
+          finalBufferRef.current = '';
+          setLiveTranscript('');
+        }
+        return;
       }
-      return;
-    }
 
-    lastSpeechRef.current = normalized;
-    processUserMessage(normalized.replace(/hey jarvis/ig, '').trim());
-    setIsWakeMode(true);
+      const command = captured.replace(/hey jarvis/ig, '').trim();
+      finalBufferRef.current = '';
+      setIsWakeMode(true);
+      processUserMessage(command);
+    }, 900);
   };
 
   const startListening = () => {
@@ -106,15 +115,23 @@ export function JarvisPage() {
       recognition.lang = 'en-US';
 
       recognition.onresult = (event: any) => {
-        const transcript = Array.from(event.results)
-          .map((result: any) => result[0]?.transcript || '')
-          .join(' ')
-          .trim();
+        let interim = '';
+        let finals = '';
 
-        if (transcript) {
-          setVoiceState('listening');
-          handleTranscript(transcript);
+        for (let i = event.resultIndex; i < event.results.length; i += 1) {
+          const text = event.results[i][0]?.transcript || '';
+          if (event.results[i].isFinal) finals += ` ${text}`;
+          else interim += ` ${text}`;
         }
+
+        if (finals.trim()) {
+          finalBufferRef.current = `${finalBufferRef.current} ${finals}`.trim();
+        }
+
+        const visible = `${finalBufferRef.current} ${interim}`.trim();
+        setLiveTranscript(visible);
+        setVoiceState('listening');
+        finishOnPause();
       };
 
       recognition.onerror = (event: any) => {
@@ -128,7 +145,7 @@ export function JarvisPage() {
             recognition.start();
             setVoiceState('listening');
           } catch {
-            // ignore browser race when restart is immediate
+            // browser restart race
           }
         }
       };
@@ -142,7 +159,7 @@ export function JarvisPage() {
       recognitionRef.current.start();
       setVoiceState('listening');
     } catch {
-      setPermissionError('Microphone start failed. If prompted, allow microphone access and try again.');
+      setPermissionError('Microphone start failed. Allow microphone access and try again.');
       setVoiceState('error');
     }
   };
@@ -158,6 +175,7 @@ export function JarvisPage() {
     return () => {
       shouldRestartRef.current = false;
       recognitionRef.current?.stop();
+      if (pauseTimerRef.current) window.clearTimeout(pauseTimerRef.current);
       if (window?.speechSynthesis) window.speechSynthesis.cancel();
     };
   }, []);
@@ -173,7 +191,7 @@ export function JarvisPage() {
           </div>
           <div>
             <h2 className="text-xl font-semibold">Jarvis</h2>
-            <p className="text-xs text-slate-300">Status: <span className="font-semibold uppercase">{voiceState}</span> {isWakeMode ? '· Waiting for “Hey Jarvis”' : '· Command capture mode'}</p>
+            <p className="text-xs text-slate-300">Status: <span className="font-semibold uppercase">{voiceState}</span> {isWakeMode ? '· Waiting for “Hey Jarvis”' : '· Listening for your command'}</p>
           </div>
         </div>
         <div className="flex gap-2">
@@ -184,7 +202,7 @@ export function JarvisPage() {
 
       <div className="rounded-xl border border-white/15 bg-black/25 p-3 mb-4">
         <p className="text-xs text-slate-300 mb-1">Live transcript</p>
-        <p className="text-sm min-h-6">{liveTranscript || 'Listening will appear here once microphone permission is granted.'}</p>
+        <p className="text-sm min-h-6">{liveTranscript || 'Say “Hey Jarvis”, then your command. Pause for ~1 second to submit.'}</p>
         {permissionError && <p className="text-xs text-red-300 mt-2">{permissionError}</p>}
       </div>
 
