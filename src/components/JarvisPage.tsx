@@ -70,6 +70,7 @@ export function JarvisPage() {
   const lastProcessedAtRef = useRef(0);
   const latestTranscriptRef = useRef('');
   const preferredVoiceRef = useRef<SpeechSynthesisVoice | null>(null);
+  const lastAssistantReplyRef = useRef('');
 
   const canUseSpeechApi = useMemo(() => {
     if (typeof window === 'undefined') return false;
@@ -105,6 +106,9 @@ export function JarvisPage() {
 
     const userMessage: Message = { role: 'user', content: clean };
     const reply = await generateJarvisReply(clean);
+    const normalizedReply = normalizeForDedup(reply);
+    if (normalizedReply && normalizedReply === lastAssistantReplyRef.current) return;
+    lastAssistantReplyRef.current = normalizedReply;
     const jarvisMessage: Message = { role: 'jarvis', content: reply };
     setMessages((prev) => [...prev, userMessage, jarvisMessage]);
     setPrompt('');
