@@ -47,8 +47,8 @@ async function generateJarvisReply(input: string): Promise<string> {
   }
 
   return buildDirectReply(
-    `Here is the direct answer: ${input}. I recommend a short action plan with concrete next steps.`,
-    'If you want, I can now produce the exact implementation steps.'
+    'Got it. I can help immediately. I will give direct answers first and only ask a follow-up if it is truly needed.',
+    'You can ask for code, product planning, debugging, or stock snapshots and I will respond directly.'
   );
 }
 
@@ -67,6 +67,7 @@ export function JarvisPage() {
   const finalBufferRef = useRef('');
   const pauseTimerRef = useRef<number | null>(null);
   const lastProcessedRef = useRef('');
+  const lastProcessedAtRef = useRef(0);
   const latestTranscriptRef = useRef('');
   const preferredVoiceRef = useRef<SpeechSynthesisVoice | null>(null);
 
@@ -76,6 +77,9 @@ export function JarvisPage() {
   }, []);
 
   const pickPreferredVoice = () => pickHumanLikeVoice(availableVoices, selectedVoiceName) || null;
+
+
+  const normalizeForDedup = (value: string) => value.toLowerCase().replace(/[^a-z0-9\s]/g, '').replace(/\s+/g, ' ').trim();
 
   const speak = (text: string) => {
     if (typeof window === 'undefined' || !window.speechSynthesis) return;
@@ -92,8 +96,11 @@ export function JarvisPage() {
 
   const processUserMessage = async (value: string) => {
     const clean = value.trim();
-    if (!clean || clean === lastProcessedRef.current) return;
-    lastProcessedRef.current = clean;
+    const normalized = normalizeForDedup(clean);
+    const now = Date.now();
+    if (!clean || (normalized && normalized === lastProcessedRef.current && now - lastProcessedAtRef.current < 4000)) return;
+    lastProcessedRef.current = normalized;
+    lastProcessedAtRef.current = now;
     setVoiceState('processing');
 
     const userMessage: Message = { role: 'user', content: clean };
