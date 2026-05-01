@@ -94,11 +94,12 @@ export function JarvisPage() {
     window.speechSynthesis.speak(utterance);
   };
 
-  const processUserMessage = async (value: string) => {
+  const processUserMessage = async (value: string, source: 'voice' | 'text' = 'voice') => {
     const clean = value.trim();
     const normalized = normalizeForDedup(clean);
     const now = Date.now();
-    if (!clean || (normalized && normalized === lastProcessedRef.current && now - lastProcessedAtRef.current < 4000)) return;
+    if (!clean) return;
+    if (source === 'voice' && normalized && normalized === lastProcessedRef.current && now - lastProcessedAtRef.current < 4000) return;
     lastProcessedRef.current = normalized;
     lastProcessedAtRef.current = now;
     setVoiceState('processing');
@@ -124,7 +125,7 @@ export function JarvisPage() {
       const captured = (finalBufferRef.current.trim() || fallback).replace(/hey jarvis/ig, '').trim();
       if (!captured) return;
       finalBufferRef.current = '';
-      void processUserMessage(captured);
+      void processUserMessage(captured, 'voice');
     }, responseDelayMs);
   };
 
@@ -227,7 +228,7 @@ export function JarvisPage() {
     };
   }, []);
 
-  const sendPrompt = () => { void processUserMessage(prompt); };
+  const sendPrompt = () => { void processUserMessage(prompt, 'text'); };
 
   return (
     <section className="rounded-2xl border border-primary/20 bg-gradient-to-b from-slate-950 via-slate-900 to-black text-white p-4 sm:p-6">
