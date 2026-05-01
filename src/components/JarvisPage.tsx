@@ -44,6 +44,7 @@ export function JarvisPage() {
   const [permissionError, setPermissionError] = useState('');
   const [availableVoices, setAvailableVoices] = useState<SpeechSynthesisVoice[]>([]);
   const [selectedVoiceName, setSelectedVoiceName] = useState('');
+  const [responseDelayMs, setResponseDelayMs] = useState(DEFAULT_PAUSE_MS);
 
   const recognitionRef = useRef<SpeechRecognitionType | null>(null);
   const shouldRestartRef = useRef(true);
@@ -97,7 +98,7 @@ export function JarvisPage() {
       if (!captured) return;
       finalBufferRef.current = '';
       processUserMessage(captured);
-    }, PAUSE_MS);
+    }, responseDelayMs);
   };
 
   const startListening = () => {
@@ -173,6 +174,8 @@ export function JarvisPage() {
   useEffect(() => {
     const bootVoices = () => {
       const voices = window.speechSynthesis?.getVoices?.() || [];
+      const savedDelay = Number(localStorage.getItem('jarvis_response_delay_ms') || DEFAULT_PAUSE_MS);
+      if (!Number.isNaN(savedDelay)) setResponseDelayMs(savedDelay);
       setAvailableVoices(voices);
       const saved = localStorage.getItem('jarvis_voice_name') || '';
       const selected = pickHumanLikeVoice(voices, saved) || pickHumanLikeVoice(voices) || null;
@@ -237,9 +240,29 @@ export function JarvisPage() {
       </div>
 
       <div className="rounded-xl border border-white/15 bg-black/25 p-3 mb-4">
+        <p className="text-xs text-slate-300 mb-1">Response delay: <span className="font-semibold">{(responseDelayMs / 1000).toFixed(1)}s</span></p>
+        <input
+          type="range"
+          min={500}
+          max={2000}
+          step={100}
+          value={responseDelayMs}
+          onChange={(e) => {
+            const value = Number(e.target.value);
+            setResponseDelayMs(value);
+            localStorage.setItem('jarvis_response_delay_ms', String(value));
+          }}
+          className="w-full accent-cyan-400"
+        />
+        <div className="flex justify-between text-[11px] text-slate-400 mt-1">
+          <span>Fast</span><span>Balanced</span><span>Slow</span>
+        </div>
+      </div>
+
+      <div className="rounded-xl border border-white/15 bg-black/25 p-3 mb-4">
         <p className="text-[11px] text-slate-400 mb-2">Tip: click Start once to grant mic/audio permissions. Browsers can block auto voice playback until first interaction.</p>
         <p className="text-xs text-slate-300 mb-1">Live transcript</p>
-        <p className="text-sm min-h-6">{liveTranscript || 'Speak your request. Pause briefly (~1.1s) to submit automatically.'}</p>
+        <p className="text-sm min-h-6">{liveTranscript || 'Speak your request. Pause briefly to submit automatically.'}</p>
         {permissionError && <p className="text-xs text-red-300 mt-2">{permissionError}</p>}
       </div>
 
