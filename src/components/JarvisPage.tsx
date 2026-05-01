@@ -3,7 +3,7 @@ import { Bot, Mic, Send, Volume2, Loader2 } from 'lucide-react';
 import { Button } from './ui/button';
 import { Textarea } from './ui/textarea';
 import { DEFAULT_PAUSE_MS, pickHumanLikeVoice } from '../utils/jarvisVoice';
-import { buildDirectReply, parsePerformanceSymbol } from '../utils/jarvisReply';
+import { buildDirectReply, buildIntentReply, detectIntent, parsePerformanceSymbol } from '../utils/jarvisReply';
 
 type Message = { role: 'user' | 'jarvis'; content: string };
 type VoiceState = 'idle' | 'listening' | 'processing' | 'speaking' | 'error';
@@ -46,10 +46,7 @@ async function generateJarvisReply(input: string): Promise<string> {
     }
   }
 
-  return buildDirectReply(
-    'Got it. I can help immediately. I will give direct answers first and only ask a follow-up if it is truly needed.',
-    'You can ask for code, product planning, debugging, or stock snapshots and I will respond directly.'
-  );
+  return buildIntentReply(detectIntent(input));
 }
 
 export function JarvisPage() {
@@ -61,6 +58,7 @@ export function JarvisPage() {
   const [availableVoices, setAvailableVoices] = useState<SpeechSynthesisVoice[]>([]);
   const [selectedVoiceName, setSelectedVoiceName] = useState('');
   const [responseDelayMs, setResponseDelayMs] = useState(DEFAULT_PAUSE_MS);
+  const [noRepeatMode, setNoRepeatMode] = useState(true);
 
   const recognitionRef = useRef<SpeechRecognitionType | null>(null);
   const shouldRestartRef = useRef(true);
@@ -81,6 +79,7 @@ export function JarvisPage() {
 
 
   const normalizeForDedup = (value: string) => value.toLowerCase().replace(/[^a-z0-9\s]/g, '').replace(/\s+/g, ' ').trim();
+  const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
   const speak = (text: string) => {
     if (typeof window === 'undefined' || !window.speechSynthesis) return;
@@ -106,15 +105,16 @@ export function JarvisPage() {
 
     const userMessage: Message = { role: 'user', content: clean };
     const reply = await generateJarvisReply(clean);
-    const normalizedReply = normalizeForDedup(reply);
+    const finalReply = noRepeatMode ? reply.replace(new RegExp(escapeRegExp(clean), 'ig'), 'that request') : reply;
+    const normalizedReply = normalizeForDedup(finalReply);
     if (normalizedReply && normalizedReply === lastAssistantReplyRef.current) return;
     lastAssistantReplyRef.current = normalizedReply;
-    const jarvisMessage: Message = { role: 'jarvis', content: reply };
+    const jarvisMessage: Message = { role: 'jarvis', content: finalReply };
     setMessages((prev) => [...prev, userMessage, jarvisMessage]);
     setPrompt('');
     setLiveTranscript('');
     latestTranscriptRef.current = '';
-    speak(reply);
+    speak(finalReply);
   };
 
   const finishOnPause = () => {
@@ -284,6 +284,19 @@ export function JarvisPage() {
         <div className="flex justify-between text-[11px] text-slate-400 mt-1">
           <span>Fast</span><span>Balanced</span><span>Slow</span>
         </div>
+      </div>
+
+      <div className="rounded-xl border border-white/15 bg-black/25 p-3 mb-4">
+        <label className="flex items-center justify-between text-sm">
+          <span>No-repeat mode</span>
+          <input
+            type="checkbox"
+            checked={noRepeatMode}
+            onChange={(e) => setNoRepeatMode(e.target.checked)}
+            className="h-4 w-4"
+          />
+        </label>
+        <p className="text-[11px] text-slate-400 mt-1">Prevents Jarvis from echoing your exact command in responses.</p>
       </div>
 
       <div className="rounded-xl border border-white/15 bg-black/25 p-3 mb-4">
