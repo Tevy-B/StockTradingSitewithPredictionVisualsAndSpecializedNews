@@ -22,6 +22,7 @@ import {
 import { StockSearch, StockSuggestion } from './components/StockSearch';
 import { LoginPage } from './components/LoginPage';
 import { AboutPage } from './components/AboutPage';
+import { JarvisPage } from './components/JarvisPage';
 
 const LAST_EMAIL_KEY = 'stockpredict_last_email';
 const REMEMBERED_EMAILS_KEY = 'stockpredict_remembered_emails';
@@ -29,9 +30,9 @@ const LAST_LOGIN_CRED_KEY = 'stockpredict_last_login_cred';
 const getLocalPortfolioKey = (email: string) => `stockpredict_portfolio_${email.toLowerCase()}`;
 const readRoute = () => {
   const url = new URL(window.location.href);
-  const page = (url.searchParams.get('page') || 'dashboard') as 'dashboard' | 'about';
+  const page = (url.searchParams.get('page') || 'dashboard') as 'dashboard' | 'about' | 'jarvis';
   const stock = url.searchParams.get('stock')?.toUpperCase() || '';
-  return { page: page === 'about' ? 'about' : 'dashboard', stock };
+  return { page: page === 'about' ? 'about' : page === 'jarvis' ? 'jarvis' : 'dashboard', stock };
 };
 
 export default function App() {
@@ -59,7 +60,7 @@ export default function App() {
     }
   });
   const initialRoute = readRoute();
-  const [currentPage, setCurrentPage] = useState<'dashboard' | 'about'>(initialRoute.page);
+  const [currentPage, setCurrentPage] = useState<'dashboard' | 'about' | 'jarvis'>(initialRoute.page);
 
   const marketSummary = useMemo(() => {
     const totalValue = stocks.reduce((sum, stock) => sum + stock.price, 0);
@@ -68,7 +69,7 @@ export default function App() {
     return { totalValue, dailyChange, dailyChangePercent };
   }, [stocks]);
 
-  const pushRoute = (page: 'dashboard' | 'about', stock?: string) => {
+  const pushRoute = (page: 'dashboard' | 'about' | 'jarvis', stock?: string) => {
     const url = new URL(window.location.href);
     url.searchParams.set('page', page);
     if (stock) url.searchParams.set('stock', stock);
@@ -385,9 +386,9 @@ export default function App() {
                 <Activity className="h-4 w-4 animate-pulse text-green-500" />
                 Live Market
               </Badge>
-              <Button variant={currentPage === 'about' ? 'default' : 'outline'} size="sm" onClick={() => pushRoute(currentPage === 'about' ? 'dashboard' : 'about')}>
-                {currentPage === 'about' ? 'Dashboard' : 'About'}
-              </Button>
+              <Button variant={currentPage === 'about' ? 'default' : 'outline'} size="sm" onClick={() => pushRoute('about')}>About</Button>
+              <Button variant={currentPage === 'jarvis' ? 'default' : 'outline'} size="sm" onClick={() => pushRoute('jarvis')}>Jarvis</Button>
+              <Button variant={currentPage === 'dashboard' ? 'default' : 'outline'} size="sm" onClick={() => pushRoute('dashboard')}>Dashboard</Button>
               <Button variant="outline" size="sm" onClick={() => { clearStoredToken(); setLoginEmail(userEmail); setUserEmail(''); }}>Logout</Button>
             </div>
           </div>
@@ -398,6 +399,8 @@ export default function App() {
       <div className="container mx-auto px-4 py-6">
         {currentPage === 'about' ? (
           <AboutPage />
+        ) : currentPage === 'jarvis' ? (
+          <JarvisPage />
         ) : (
           <>
         <section className="lux-grid-bg relative overflow-hidden rounded-2xl border border-primary/20 bg-gradient-to-r from-slate-950 via-slate-900 to-indigo-950 text-white p-5 sm:p-8 mb-6">

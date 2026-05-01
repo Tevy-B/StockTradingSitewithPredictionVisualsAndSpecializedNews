@@ -236,3 +236,8 @@ docs/images/          # README visuals
 ## License & Usage
 
 This repository remains proprietary as defined by the project owner. Please review existing repository license notes before reuse or distribution.
+
+## Jarvis Documentation
+
+For a beginner-friendly explanation of Jarvis design, behavior, and roadmap, see:
+- [Jarvis Guide](docs/JARVIS_GUIDE.md)
