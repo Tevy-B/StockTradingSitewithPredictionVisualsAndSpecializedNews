@@ -1,4 +1,4 @@
-export const DEFAULT_PAUSE_MS = 1100;
+export const DEFAULT_PAUSE_MS = 1500;
 
 export type VoiceLike = { name: string; lang: string };
 

@@ -15,5 +15,5 @@ test('pickHumanLikeVoice falls back to preferred human-like names', () => {
 });
 
 test('default pause is long enough for natural speaking gap', () => {
-  assert.equal(DEFAULT_PAUSE_MS, 1100);
+  assert.equal(DEFAULT_PAUSE_MS, 1500);
 });

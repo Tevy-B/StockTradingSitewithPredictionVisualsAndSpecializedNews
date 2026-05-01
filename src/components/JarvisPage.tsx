@@ -3,6 +3,7 @@ import { Bot, Mic, Send, Volume2, Loader2 } from 'lucide-react';
 import { Button } from './ui/button';
 import { Textarea } from './ui/textarea';
 import { DEFAULT_PAUSE_MS, pickHumanLikeVoice } from '../utils/jarvisVoice';
+import { buildDirectReply, parsePerformanceSymbol } from '../utils/jarvisReply';
 
 type Message = { role: 'user' | 'jarvis'; content: string };
 type VoiceState = 'idle' | 'listening' | 'processing' | 'speaking' | 'error';
@@ -21,19 +22,34 @@ type SpeechRecognitionType = {
 const blocked = /(payment|bank|invest|trading|buy stock|sell stock|wire transfer|purchase)/i;
 const PAUSE_MS = DEFAULT_PAUSE_MS;
 
-function generateJarvisReply(input: string): string {
+async function generateJarvisReply(input: string): Promise<string> {
   if (blocked.test(input)) {
     return 'I can’t assist with money movement, banking, purchases, investing, or trading actions. I can still help with project strategy, specs, coding, and GitHub workflows.';
   }
 
-  return `I understood your request: "${input}".
+  const symbol = parsePerformanceSymbol(input);
+  if (symbol && /today/i.test(input)) {
+    try {
+      const res = await fetch(`/api/stocks/${symbol}/detail`);
+      if (res.ok) {
+        const data = await res.json();
+        const price = Number(data?.quote?.c || data?.price || 0);
+        const change = Number(data?.quote?.dp || data?.changePercent || 0);
+        const direction = change >= 0 ? 'up' : 'down';
+        return buildDirectReply(
+          `${symbol} is ${direction} ${Math.abs(change).toFixed(2)}% today, trading around $${price.toFixed(2)}.`,
+          'I can also summarize 1-week trend and latest news in one quick update.'
+        );
+      }
+    } catch {
+      // fallback below
+    }
+  }
 
-Plan:
-1) Clarify the task goal
-2) Break it into actionable steps
-3) Ask approval before edits/git actions
-
-Tell me if you want me to produce the exact implementation steps now.`;
+  return buildDirectReply(
+    `Here is the direct answer: ${input}. I recommend a short action plan with concrete next steps.`,
+    'If you want, I can now produce the exact implementation steps.'
+  );
 }
 
 export function JarvisPage() {
@@ -74,14 +90,14 @@ export function JarvisPage() {
     window.speechSynthesis.speak(utterance);
   };
 
-  const processUserMessage = (value: string) => {
+  const processUserMessage = async (value: string) => {
     const clean = value.trim();
     if (!clean || clean === lastProcessedRef.current) return;
     lastProcessedRef.current = clean;
     setVoiceState('processing');
 
     const userMessage: Message = { role: 'user', content: clean };
-    const reply = generateJarvisReply(clean);
+    const reply = await generateJarvisReply(clean);
     const jarvisMessage: Message = { role: 'jarvis', content: reply };
     setMessages((prev) => [...prev, userMessage, jarvisMessage]);
     setPrompt('');
@@ -97,7 +113,7 @@ export function JarvisPage() {
       const captured = (finalBufferRef.current.trim() || fallback).replace(/hey jarvis/ig, '').trim();
       if (!captured) return;
       finalBufferRef.current = '';
-      processUserMessage(captured);
+      void processUserMessage(captured);
     }, responseDelayMs);
   };
 
@@ -200,7 +216,7 @@ export function JarvisPage() {
     };
   }, []);
 
-  const sendPrompt = () => processUserMessage(prompt);
+  const sendPrompt = () => { void processUserMessage(prompt); };
 
   return (
     <section className="rounded-2xl border border-primary/20 bg-gradient-to-b from-slate-950 via-slate-900 to-black text-white p-4 sm:p-6">
@@ -262,7 +278,7 @@ export function JarvisPage() {
       <div className="rounded-xl border border-white/15 bg-black/25 p-3 mb-4">
         <p className="text-[11px] text-slate-400 mb-2">Tip: click Start once to grant mic/audio permissions. Browsers can block auto voice playback until first interaction.</p>
         <p className="text-xs text-slate-300 mb-1">Live transcript</p>
-        <p className="text-sm min-h-6">{liveTranscript || 'Speak your request. Pause briefly to submit automatically.'}</p>
+        <p className="text-sm min-h-6">{liveTranscript || 'Speak your request. Pause briefly (~1.5s) to submit automatically.'}</p>
         {permissionError && <p className="text-xs text-red-300 mt-2">{permissionError}</p>}
       </div>
 
