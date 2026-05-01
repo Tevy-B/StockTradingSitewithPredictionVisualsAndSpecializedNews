@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Bot, Mic, Send, Volume2, Loader2 } from 'lucide-react';
 import { Button } from './ui/button';
 import { Textarea } from './ui/textarea';
+import { DEFAULT_PAUSE_MS, pickHumanLikeVoice } from '../utils/jarvisVoice';
 
 type Message = { role: 'user' | 'jarvis'; content: string };
 type VoiceState = 'idle' | 'listening' | 'processing' | 'speaking' | 'error';
@@ -18,7 +19,7 @@ type SpeechRecognitionType = {
 };
 
 const blocked = /(payment|bank|invest|trading|buy stock|sell stock|wire transfer|purchase)/i;
-const PAUSE_MS = 700;
+const PAUSE_MS = DEFAULT_PAUSE_MS;
 
 function generateJarvisReply(input: string): string {
   if (blocked.test(input)) {
@@ -41,6 +42,8 @@ export function JarvisPage() {
   const [voiceState, setVoiceState] = useState<VoiceState>('idle');
   const [liveTranscript, setLiveTranscript] = useState('');
   const [permissionError, setPermissionError] = useState('');
+  const [availableVoices, setAvailableVoices] = useState<SpeechSynthesisVoice[]>([]);
+  const [selectedVoiceName, setSelectedVoiceName] = useState('');
 
   const recognitionRef = useRef<SpeechRecognitionType | null>(null);
   const shouldRestartRef = useRef(true);
@@ -55,21 +58,14 @@ export function JarvisPage() {
     return Boolean((window as any).SpeechRecognition || (window as any).webkitSpeechRecognition);
   }, []);
 
-  const pickPreferredVoice = () => {
-    if (typeof window === 'undefined' || !window.speechSynthesis) return null;
-    const voices = window.speechSynthesis.getVoices();
-    if (!voices.length) return null;
-
-    const preferredNames = ['Siri', 'Google US English', 'Microsoft Aria', 'Jenny', 'Samantha'];
-    const preferred = voices.find((v) => preferredNames.some((name) => v.name.includes(name)));
-    return preferred || voices.find((v) => v.lang.toLowerCase().startsWith('en-us')) || voices[0];
-  };
+  const pickPreferredVoice = () => pickHumanLikeVoice(availableVoices, selectedVoiceName) || null;
 
   const speak = (text: string) => {
     if (typeof window === 'undefined' || !window.speechSynthesis) return;
     setVoiceState('speaking');
     const utterance = new SpeechSynthesisUtterance(text);
-    utterance.voice = preferredVoiceRef.current || pickPreferredVoice();
+    const resolvedVoice = preferredVoiceRef.current || pickPreferredVoice();
+    if (resolvedVoice) utterance.voice = resolvedVoice;
     utterance.rate = 0.96;
     utterance.pitch = 1.0;
     utterance.onend = () => setVoiceState('listening');
@@ -175,7 +171,16 @@ export function JarvisPage() {
   };
 
   useEffect(() => {
-    const bootVoices = () => { preferredVoiceRef.current = pickPreferredVoice(); };
+    const bootVoices = () => {
+      const voices = window.speechSynthesis?.getVoices?.() || [];
+      setAvailableVoices(voices);
+      const saved = localStorage.getItem('jarvis_voice_name') || '';
+      const selected = pickHumanLikeVoice(voices, saved) || pickHumanLikeVoice(voices) || null;
+      if (selected) {
+        preferredVoiceRef.current = selected as SpeechSynthesisVoice;
+        setSelectedVoiceName(selected.name);
+      }
+    };
     bootVoices();
     if (typeof window !== 'undefined' && window.speechSynthesis) {
       window.speechSynthesis.onvoiceschanged = bootVoices;
@@ -213,9 +218,28 @@ export function JarvisPage() {
       </div>
 
       <div className="rounded-xl border border-white/15 bg-black/25 p-3 mb-4">
+        <p className="text-xs text-slate-300 mb-2">Voice style</p>
+        <select
+          value={selectedVoiceName}
+          onChange={(e) => {
+            const name = e.target.value;
+            setSelectedVoiceName(name);
+            localStorage.setItem('jarvis_voice_name', name);
+            const found = availableVoices.find((v) => v.name === name) || null;
+            preferredVoiceRef.current = found;
+          }}
+          className="w-full rounded bg-slate-900 border border-slate-600 px-2 py-2 text-sm"
+        >
+          {availableVoices.map((voice) => (
+            <option key={`${voice.name}-${voice.lang}`} value={voice.name}>{voice.name} ({voice.lang})</option>
+          ))}
+        </select>
+      </div>
+
+      <div className="rounded-xl border border-white/15 bg-black/25 p-3 mb-4">
         <p className="text-[11px] text-slate-400 mb-2">Tip: click Start once to grant mic/audio permissions. Browsers can block auto voice playback until first interaction.</p>
         <p className="text-xs text-slate-300 mb-1">Live transcript</p>
-        <p className="text-sm min-h-6">{liveTranscript || 'Speak your request. Pause briefly (~0.7s) to submit automatically.'}</p>
+        <p className="text-sm min-h-6">{liveTranscript || 'Speak your request. Pause briefly (~1.1s) to submit automatically.'}</p>
         {permissionError && <p className="text-xs text-red-300 mt-2">{permissionError}</p>}
       </div>
 
