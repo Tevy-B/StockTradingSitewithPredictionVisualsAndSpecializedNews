@@ -18,7 +18,6 @@ type SpeechRecognitionType = {
 };
 
 const blocked = /(payment|bank|invest|trading|buy stock|sell stock|wire transfer|purchase)/i;
-const WAKE_WORD = 'hey jarvis';
 
 function generateJarvisReply(input: string): string {
   if (blocked.test(input)) {
@@ -37,10 +36,9 @@ Tell me if you want me to produce the exact implementation steps now.`;
 
 export function JarvisPage() {
   const [prompt, setPrompt] = useState('');
-  const [messages, setMessages] = useState<Message[]>([{ role: 'jarvis', content: 'Jarvis online. Say "Hey Jarvis", pause after your command, and I will respond.' }]);
+  const [messages, setMessages] = useState<Message[]>([{ role: 'jarvis', content: 'Jarvis online. Speak naturally, pause briefly, and I will respond.' }]);
   const [voiceState, setVoiceState] = useState<VoiceState>('idle');
   const [liveTranscript, setLiveTranscript] = useState('');
-  const [isWakeMode, setIsWakeMode] = useState(true);
   const [permissionError, setPermissionError] = useState('');
 
   const recognitionRef = useRef<SpeechRecognitionType | null>(null);
@@ -81,24 +79,12 @@ export function JarvisPage() {
   const finishOnPause = () => {
     if (pauseTimerRef.current) window.clearTimeout(pauseTimerRef.current);
     pauseTimerRef.current = window.setTimeout(() => {
-      const captured = finalBufferRef.current.trim();
+      const fallback = liveTranscript.trim();
+      const captured = (finalBufferRef.current.trim() || fallback).replace(/hey jarvis/ig, '').trim();
       if (!captured) return;
-
-      if (isWakeMode) {
-        if (captured.toLowerCase().includes(WAKE_WORD)) {
-          setIsWakeMode(false);
-          setMessages((prev) => [...prev, { role: 'jarvis', content: 'I’m listening. Say your command now, then pause.' }]);
-          finalBufferRef.current = '';
-          setLiveTranscript('');
-        }
-        return;
-      }
-
-      const command = captured.replace(/hey jarvis/ig, '').trim();
       finalBufferRef.current = '';
-      setIsWakeMode(true);
-      processUserMessage(command);
-    }, 900);
+      processUserMessage(captured);
+    }, 500);
   };
 
   const startListening = () => {
@@ -191,7 +177,7 @@ export function JarvisPage() {
           </div>
           <div>
             <h2 className="text-xl font-semibold">Jarvis</h2>
-            <p className="text-xs text-slate-300">Status: <span className="font-semibold uppercase">{voiceState}</span> {isWakeMode ? '· Waiting for “Hey Jarvis”' : '· Listening for your command'}</p>
+            <p className="text-xs text-slate-300">Status: <span className="font-semibold uppercase">{voiceState}</span> · Pause briefly and I will reply</p>
           </div>
         </div>
         <div className="flex gap-2">
@@ -202,7 +188,7 @@ export function JarvisPage() {
 
       <div className="rounded-xl border border-white/15 bg-black/25 p-3 mb-4">
         <p className="text-xs text-slate-300 mb-1">Live transcript</p>
-        <p className="text-sm min-h-6">{liveTranscript || 'Say “Hey Jarvis”, then your command. Pause for ~1 second to submit.'}</p>
+        <p className="text-sm min-h-6">{liveTranscript || 'Speak your request. Pause for ~0.5 second to submit automatically.'}</p>
         {permissionError && <p className="text-xs text-red-300 mt-2">{permissionError}</p>}
       </div>
 
