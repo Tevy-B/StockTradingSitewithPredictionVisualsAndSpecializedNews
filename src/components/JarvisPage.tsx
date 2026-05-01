@@ -46,6 +46,7 @@ export function JarvisPage() {
   const finalBufferRef = useRef('');
   const pauseTimerRef = useRef<number | null>(null);
   const lastProcessedRef = useRef('');
+  const latestTranscriptRef = useRef('');
 
   const canUseSpeechApi = useMemo(() => {
     if (typeof window === 'undefined') return false;
@@ -73,18 +74,19 @@ export function JarvisPage() {
     setMessages((prev) => [...prev, userMessage, jarvisMessage]);
     setPrompt('');
     setLiveTranscript('');
+    latestTranscriptRef.current = '';
     speak(reply);
   };
 
   const finishOnPause = () => {
     if (pauseTimerRef.current) window.clearTimeout(pauseTimerRef.current);
     pauseTimerRef.current = window.setTimeout(() => {
-      const fallback = liveTranscript.trim();
+      const fallback = latestTranscriptRef.current.trim();
       const captured = (finalBufferRef.current.trim() || fallback).replace(/hey jarvis/ig, '').trim();
       if (!captured) return;
       finalBufferRef.current = '';
       processUserMessage(captured);
-    }, 500);
+    }, 300);
   };
 
   const startListening = () => {
@@ -115,6 +117,7 @@ export function JarvisPage() {
         }
 
         const visible = `${finalBufferRef.current} ${interim}`.trim();
+        latestTranscriptRef.current = visible;
         setLiveTranscript(visible);
         setVoiceState('listening');
         finishOnPause();
@@ -187,6 +190,7 @@ export function JarvisPage() {
       </div>
 
       <div className="rounded-xl border border-white/15 bg-black/25 p-3 mb-4">
+        <p className="text-[11px] text-slate-400 mb-2">Tip: click Start once to grant mic/audio permissions. Browsers can block auto voice playback until first interaction.</p>
         <p className="text-xs text-slate-300 mb-1">Live transcript</p>
         <p className="text-sm min-h-6">{liveTranscript || 'Speak your request. Pause for ~0.5 second to submit automatically.'}</p>
         {permissionError && <p className="text-xs text-red-300 mt-2">{permissionError}</p>}
