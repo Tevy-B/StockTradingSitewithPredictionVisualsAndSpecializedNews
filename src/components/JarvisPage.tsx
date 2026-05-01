@@ -18,6 +18,7 @@ type SpeechRecognitionType = {
 };
 
 const blocked = /(payment|bank|invest|trading|buy stock|sell stock|wire transfer|purchase)/i;
+const PAUSE_MS = 700;
 
 function generateJarvisReply(input: string): string {
   if (blocked.test(input)) {
@@ -47,16 +48,30 @@ export function JarvisPage() {
   const pauseTimerRef = useRef<number | null>(null);
   const lastProcessedRef = useRef('');
   const latestTranscriptRef = useRef('');
+  const preferredVoiceRef = useRef<SpeechSynthesisVoice | null>(null);
 
   const canUseSpeechApi = useMemo(() => {
     if (typeof window === 'undefined') return false;
     return Boolean((window as any).SpeechRecognition || (window as any).webkitSpeechRecognition);
   }, []);
 
+  const pickPreferredVoice = () => {
+    if (typeof window === 'undefined' || !window.speechSynthesis) return null;
+    const voices = window.speechSynthesis.getVoices();
+    if (!voices.length) return null;
+
+    const preferredNames = ['Siri', 'Google US English', 'Microsoft Aria', 'Jenny', 'Samantha'];
+    const preferred = voices.find((v) => preferredNames.some((name) => v.name.includes(name)));
+    return preferred || voices.find((v) => v.lang.toLowerCase().startsWith('en-us')) || voices[0];
+  };
+
   const speak = (text: string) => {
     if (typeof window === 'undefined' || !window.speechSynthesis) return;
     setVoiceState('speaking');
     const utterance = new SpeechSynthesisUtterance(text);
+    utterance.voice = preferredVoiceRef.current || pickPreferredVoice();
+    utterance.rate = 0.96;
+    utterance.pitch = 1.0;
     utterance.onend = () => setVoiceState('listening');
     window.speechSynthesis.cancel();
     window.speechSynthesis.speak(utterance);
@@ -86,7 +101,7 @@ export function JarvisPage() {
       if (!captured) return;
       finalBufferRef.current = '';
       processUserMessage(captured);
-    }, 300);
+    }, PAUSE_MS);
   };
 
   const startListening = () => {
@@ -160,12 +175,20 @@ export function JarvisPage() {
   };
 
   useEffect(() => {
+    const bootVoices = () => { preferredVoiceRef.current = pickPreferredVoice(); };
+    bootVoices();
+    if (typeof window !== 'undefined' && window.speechSynthesis) {
+      window.speechSynthesis.onvoiceschanged = bootVoices;
+    }
     startListening();
     return () => {
       shouldRestartRef.current = false;
       recognitionRef.current?.stop();
       if (pauseTimerRef.current) window.clearTimeout(pauseTimerRef.current);
-      if (window?.speechSynthesis) window.speechSynthesis.cancel();
+      if (window?.speechSynthesis) {
+        window.speechSynthesis.cancel();
+        window.speechSynthesis.onvoiceschanged = null;
+      }
     };
   }, []);
 
@@ -192,7 +215,7 @@ export function JarvisPage() {
       <div className="rounded-xl border border-white/15 bg-black/25 p-3 mb-4">
         <p className="text-[11px] text-slate-400 mb-2">Tip: click Start once to grant mic/audio permissions. Browsers can block auto voice playback until first interaction.</p>
         <p className="text-xs text-slate-300 mb-1">Live transcript</p>
-        <p className="text-sm min-h-6">{liveTranscript || 'Speak your request. Pause for ~0.5 second to submit automatically.'}</p>
+        <p className="text-sm min-h-6">{liveTranscript || 'Speak your request. Pause briefly (~0.7s) to submit automatically.'}</p>
         {permissionError && <p className="text-xs text-red-300 mt-2">{permissionError}</p>}
       </div>
 
